@@ -1,26 +1,22 @@
 import streamlit as st
 from groq import Groq
-import random
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key="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")  # Replace with your actual key
-GROQ_MODEL = "gemma-7b"
+groq_client = Groq(api_key="your-groq-api-key")  # Replace with your actual key
+GROQ_MODEL = "mixtral-8x7b-32768"  # Use a valid Groq model
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
 top_hashtags = ["giftguide2025", "kiwichristmas", "bbqseason", "nzpost", "stockingstuffers"]
 top_post = "Just wrapped the last gift and realised I forgot Mum. Again. #kiwichristmas"
 
-# Simulated sentiment labels and counts
-sentiment_labels = ["positive", "neutral", "negative"]
 sentiment_counts = {
     "positive": 34,
     "neutral": 12,
     "negative": 8
 }
 
-# Simulated emotional barometer
 emotional_barometer = {
     "joy": 28,
     "stress": 18,
@@ -29,7 +25,6 @@ emotional_barometer = {
     "generosity": 16
 }
 
-# Simulated new trend signals
 new_trends = [
     "BBQ kits with free delivery",
     "Last-minute spa vouchers",
@@ -42,10 +37,18 @@ new_trends = [
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
 st.title("🎄 NZ Christmas Retail Trend Listener + Creative Generator")
 
-col1, col2, col3 = st.columns(3)
-col1.metric("🎯 Top Hashtags", ", ".join([f"#{tag}" for tag in top_hashtags]))
-col2.metric("💬 Sentiment Summary", f"{sentiment_counts}")
-col3.metric("🎄 Sample Post", top_post)
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("🎯 Top Hashtags")
+    st.text_area("Top Hashtags", "\n".join([f"#{tag}" for tag in top_hashtags]), height=100)
+
+with col2:
+    st.subheader("💬 Sentiment Summary")
+    sentiment_text = "\n".join([f"{k.capitalize()}: {v}" for k, v in sentiment_counts.items()])
+    st.text_area("Sentiment", sentiment_text, height=100)
+
+st.subheader("🎄 Sample Post")
+st.text_area("Top Post", top_post, height=80)
 
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
@@ -66,10 +69,10 @@ if top_emotion == "stress":
 else:
     st.info(f"💡 Dominant emotion: **{top_emotion.capitalize()}** — lean into it for creative tone.")
 
-# ─── Pre-Baked Creative Lines ──────────────────────────────────────────────────
+# ─── Creative Ideas ────────────────────────────────────────────────────────────
 
 st.markdown("---")
-st.subheader("✨ Pre-Baked Creative Ideas")
+st.subheader("✨ Creative Ideas Based on Trends")
 
 st.markdown("""
 These lines reflect current sentiment — a mix of excitement, stress, and Kiwi practicality:
@@ -98,11 +101,14 @@ def generate_creative_lines(topics, sentiment_summary, trending_post):
         "Speak to the real stress and joy of a Kiwi Christmas: rural delivery panic, BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
         "Prioritise emotional truth, campaign utility, and shareability."
     )
-    response = groq_client.chat.completions.create(
-        model=GROQ_MODEL,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    try:
+        response = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ Error generating lines: {e}"
 
 if st.button("Generate"):
     lines = generate_creative_lines(top_hashtags, sentiment_counts, top_post)
