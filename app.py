@@ -1,15 +1,15 @@
 import streamlit as st
+import pandas as pd
 from groq import Groq
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
 groq_client = Groq(api_key="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")  # Replace with your actual key
-GROQ_MODEL = "llama-3.1-8b-instant"  # Use a valid Groq model
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
 top_hashtags = ["giftguide2025", "kiwichristmas", "bbqseason", "nzpost", "stockingstuffers"]
-top_post = "Just wrapped the last gift and realised I forgot Mum. Again. #kiwichristmas"
 
 sentiment_counts = {
     "positive": 34,
@@ -32,6 +32,14 @@ new_trends = [
     "DIY stocking filler hacks"
 ]
 
+top_posts_data = [
+    {"post": "Just wrapped the last gift and realised I forgot Mum. Again. #kiwichristmas", "sentiment": "negative"},
+    {"post": "BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win. #bbqseason", "sentiment": "positive"},
+    {"post": "She said ‘no fuss this year’ — so you bought her a spa voucher and cried in the carpark. #giftguide2025", "sentiment": "neutral"},
+    {"post": "Stocking stuffers under $20 that won’t make you look like you forgot — even if you did. #stockingstuffers", "sentiment": "positive"},
+    {"post": "Rural delivery panic is real. NZ Post, we believe in you. #nzpost", "sentiment": "stress"}
+]
+
 # ─── App Layout ────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
@@ -47,8 +55,11 @@ with col2:
     sentiment_text = "\n".join([f"{k.capitalize()}: {v}" for k, v in sentiment_counts.items()])
     st.text_area("Sentiment", sentiment_text, height=100)
 
-st.subheader("🎄 Sample Post")
-st.text_area("Top Post", top_post, height=80)
+# ─── Top Posts Table ───────────────────────────────────────────────────────────
+
+st.subheader("🎄 Top Posts and Sentiment Overview")
+posts_df = pd.DataFrame(top_posts_data)
+st.dataframe(posts_df, use_container_width=True)
 
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
@@ -89,12 +100,15 @@ These lines reflect current sentiment — a mix of excitement, stress, and Kiwi 
 st.markdown("---")
 st.subheader("📝 Generate More Creative Lines")
 
-def generate_creative_lines(topics, sentiment_summary, trending_post):
+# Combine all top posts and their sentiment into a readable summary
+post_summary = "\n".join([f"- \"{item['post']}\" ({item['sentiment']})" for item in top_posts_data])
+
+def generate_creative_lines(topics, sentiment_summary, post_summary):
     prompt = (
         "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
         f"Trending hashtags: {topics}\n"
         f"Sentiment summary: {sentiment_summary}\n"
-        f"Sample post: \"{trending_post}\"\n\n"
+        f"Top posts today:\n{post_summary}\n\n"
         "Generate 3 short social lines that reflect current retail vibes.\n"
         "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
         "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
@@ -110,9 +124,21 @@ def generate_creative_lines(topics, sentiment_summary, trending_post):
     except Exception as e:
         return f"❌ Error generating lines: {e}"
 
-if st.button("Generate"):
-    lines = generate_creative_lines(top_hashtags, sentiment_counts, top_post)
+# Initialize session state
+if "creative_lines" not in st.session_state:
+    st.session_state.creative_lines = ""
+
+# Show the post summary being used
+st.markdown("**📌 Using today's top posts for inspiration:**")
+st.markdown(post_summary)
+
+# Button to generate or regenerate
+if st.button("🔁 Generate or Regenerate Ideas"):
+    st.session_state.creative_lines = generate_creative_lines(top_hashtags, sentiment_counts, post_summary)
+
+# Display generated lines
+if st.session_state.creative_lines:
     st.markdown("#### ✨ Generated Lines")
-    for line in lines.split("\n"):
+    for line in st.session_state.creative_lines.split("\n"):
         if line.strip():
             st.markdown(f"✅ {line.strip()}")
