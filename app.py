@@ -4,7 +4,7 @@ from groq import Groq
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
 groq_client = Groq(api_key="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")  # Replace with your actual key
-GROQ_MODEL = "llama3-8b-8192"  # Use a valid Groq model
+GROQ_MODEL = "llama-3.1-8b-instant"  # Use a valid Groq model
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
