@@ -3,8 +3,8 @@ from groq import Groq
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key="your-groq-api-key")  # Replace with your actual key
-GROQ_MODEL = "mixtral-8x7b-32768"  # Use a valid Groq model
+groq_client = Groq(api_key="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")  # Replace with your actual key
+GROQ_MODEL = "llama3-8b-8192"  # Use a valid Groq model
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
