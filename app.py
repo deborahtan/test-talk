@@ -4,12 +4,12 @@ from groq import Groq
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key="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")  # Replace with your actual key
+groq_client = Groq(api_key="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")  # Replace with your actual key
 GROQ_MODEL = "llama-3.1-8b-instant"
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
-top_hashtags = ["giftguide2025", "kiwichristmas", "bbqseason", "nzpost", "stockingstuffers"]
+top_hashtags = ["christmas", "kiwichristmas", "bbqseason", "christmasgift", "stockingstuffers"]
 
 sentiment_counts = {
     "positive": 34,
@@ -28,16 +28,13 @@ emotional_barometer = {
 new_trends = [
     "BBQ kits with free delivery",
     "Last-minute spa vouchers",
-    "Rural shipping anxiety memes",
     "DIY stocking filler hacks"
 ]
 
 top_posts_data = [
     {"post": "Just wrapped the last gift and realised I forgot Mum. Again. #kiwichristmas", "sentiment": "negative"},
     {"post": "BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win. #bbqseason", "sentiment": "positive"},
-    {"post": "She said ‘no fuss this year’ — so you bought her a spa voucher and cried in the carpark. #giftguide2025", "sentiment": "neutral"},
-    {"post": "Stocking stuffers under $20 that won’t make you look like you forgot — even if you did. #stockingstuffers", "sentiment": "positive"},
-    {"post": "Rural delivery panic is real. NZ Post, we believe in you. #nzpost", "sentiment": "stress"}
+    {"post": "Stocking stuffers under $20 that won’t make you look like you forgot — even if you did. #stockingstuffers", "sentiment": "positive"}
 ]
 
 # ─── App Layout ────────────────────────────────────────────────────────────────
@@ -90,7 +87,6 @@ These lines reflect current sentiment — a mix of excitement, stress, and Kiwi 
 
 - ✅ *“Christmas magic? Nah, it’s just you panic-buying candles and hoping NZ Post delivers on time.”*  
 - ✅ *“BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win.”*  
-- ✅ *“She said ‘no fuss this year’ — so you bought her a spa voucher and cried in the carpark.”*  
 - ✅ *“Stocking stuffers under $20 that won’t make you look like you forgot — even if you did.”*  
 - ✅ *“Grill kits, gift cards, and a dash of emotional damage — your Christmas sorted.”*
 """)
@@ -112,7 +108,7 @@ def generate_creative_lines(topics, sentiment_summary, post_summary):
         "Generate 3 short social lines that reflect current retail vibes.\n"
         "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
         "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
-        "Speak to the real stress and joy of a Kiwi Christmas: rural delivery panic, BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
+        "Speak to the real stress and joy of a Kiwi Christmas: BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
         "Prioritise emotional truth, campaign utility, and shareability."
     )
     try:
