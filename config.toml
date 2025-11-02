@@ -1,0 +1,9 @@
+[theme]
+primaryColor="#000000"
+backgroundColor="#333333"
+textColor="#FFFFFF"
+baseRadius="8px"
+font="StabilGrotesk"
+url="app/static/StabilGrotesk-Regular.otf"
+style="normal"
+weight=400
