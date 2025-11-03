@@ -11,17 +11,19 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+GROQ_API_KEY = "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"
 GROQ_MODEL = "llama-3.1-8b-instant"
-APIFY_DATASET_URL = st.secrets["APIFY_DATASET_URL"]
-APIFY_TOKEN = st.secrets["APIFY_TOKEN"]
+APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/fU0Y0M3aAPofsFXEi/items?format=json&view=overview&clean=true"
+APIFY_TOKEN = "apify_api_356ndncSWmZqeg1kyAylb8djs1YnZB161LLe"
 
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ─── Data Fetching & Analysis ──────────────────────────────────────────────────
 
 @st.cache_data(show_spinner=False)
 def fetch_apify_data():
-    response = requests.get(APIFY_DATASET_URL)
+    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
+    response = requests.get(APIFY_DATASET_URL, headers=headers)
     response.raise_for_status()
     return response.json()
 
@@ -198,6 +200,9 @@ with st.container():
     st.subheader("🌟 Hashtag Word Cloud")
 
     hashtag_freq = {tag: 1 for tag in top_hashtags}
+    wc = WordCloud(
+        width=400,
+        height=150,
     wc = WordCloud(
         width=400,
         height=150,
