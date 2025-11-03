@@ -1,15 +1,19 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud
 from groq import Groq
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key="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")  # Replace with your actual key
+groq_client = Groq(api_key="your_groq_api_key")  # Replace with your actual key
 GROQ_MODEL = "llama-3.1-8b-instant"
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
 
-top_hashtags = ["christmas", "kiwichristmas", "bbqseason", "christmasgift", "stockingstuffers"]
+top_hashtags = [
+    "christmas", "kiwichristmas", "bbqseason", "christmasgift", "stockingstuffers"
+]
 
 sentiment_counts = {
     "positive": 34,
@@ -42,99 +46,110 @@ top_posts_data = [
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
 st.title("🎄 NZ Christmas Retail Trend Listener + Creative Generator")
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("🎯 Top Hashtags")
-    st.text_area("Top Hashtags", "\n".join([f"#{tag}" for tag in top_hashtags]), height=100)
+# ─── Hashtag Word Cloud ────────────────────────────────────────────────────────
 
-with col2:
+with st.container():
+    st.subheader("🌟 Hashtag Word Cloud")
+    hashtag_freq = {tag: 1 for tag in top_hashtags}
+    wc = WordCloud(width=800, height=300, background_color="white").generate_from_frequencies(hashtag_freq)
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig, use_container_width=True)
+
+    selected_hashtag = st.selectbox("🔍 Click a hashtag to view related posts", top_hashtags)
+    filtered_posts = [p for p in top_posts_data if f"#{selected_hashtag}" in p["post"].lower()]
+    if filtered_posts:
+        st.markdown(f"### 📌 Posts tagged with #{selected_hashtag}")
+        for post in filtered_posts:
+            st.markdown(f"- \"{post['post']}\" ({post['sentiment']})")
+    else:
+        st.markdown(f"⚠️ No posts found for #{selected_hashtag}")
+
+# ─── Sentiment Summary ─────────────────────────────────────────────────────────
+
+with st.container():
     st.subheader("💬 Sentiment Summary")
-    sentiment_text = "\n".join([f"{k.capitalize()}: {v}" for k, v in sentiment_counts.items()])
-    st.text_area("Sentiment", sentiment_text, height=100)
+    for k, v in sentiment_counts.items():
+        st.markdown(f"- {k.capitalize()}: {v}")
 
 # ─── Top Posts Table ───────────────────────────────────────────────────────────
 
-st.subheader("🎄 Top Posts and Sentiment Overview")
-posts_df = pd.DataFrame(top_posts_data)
-st.dataframe(posts_df, use_container_width=True)
+with st.container():
+    st.subheader("🎄 Top Posts and Sentiment Overview")
+    posts_df = pd.DataFrame(top_posts_data)
+    st.dataframe(posts_df, use_container_width=True)
 
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
-st.markdown("---")
-st.subheader("🧠 Trend Spotter")
+with st.container():
+    st.subheader("🧠 Trend Spotter")
+    st.markdown("**📈 New Trends Identified:**")
+    for trend in new_trends:
+        st.markdown(f"- {trend}")
 
-st.markdown("**📈 New Trends Identified:**")
-for trend in new_trends:
-    st.markdown(f"- {trend}")
+    st.markdown("**📊 Emotional Barometer (Post Volume):**")
+    for emotion, count in emotional_barometer.items():
+        st.markdown(f"- {emotion.capitalize()}: {count}")
 
-st.markdown("**📊 Emotional Barometer (Post Volume):**")
-for emotion, count in emotional_barometer.items():
-    st.markdown(f"- {emotion.capitalize()}: {count}")
-
-top_emotion = max(emotional_barometer, key=emotional_barometer.get)
-if top_emotion == "stress":
-    st.warning("⚠️ Stress is trending. Campaigns should acknowledge pressure and offer relief or simplicity.")
-else:
-    st.info(f"💡 Dominant emotion: **{top_emotion.capitalize()}** — lean into it for creative tone.")
+    top_emotion = max(emotional_barometer, key=emotional_barometer.get)
+    if top_emotion == "stress":
+        st.warning("⚠️ Stress is trending. Campaigns should acknowledge pressure and offer relief or simplicity.")
+    else:
+        st.info(f"💡 Dominant emotion: **{top_emotion.capitalize()}** — lean into it for creative tone.")
 
 # ─── Creative Ideas ────────────────────────────────────────────────────────────
 
-st.markdown("---")
-st.subheader("✨ Creative Ideas Based on Trends")
+with st.container():
+    st.subheader("✨ Creative Ideas Based on Trends")
+    st.markdown("""
+    These lines reflect current sentiment — a mix of excitement, stress, and Kiwi practicality:
 
-st.markdown("""
-These lines reflect current sentiment — a mix of excitement, stress, and Kiwi practicality:
-
-- ✅ *“Christmas magic? Nah, it’s just you panic-buying candles and hoping NZ Post delivers on time.”*  
-- ✅ *“BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win.”*  
-- ✅ *“Stocking stuffers under $20 that won’t make you look like you forgot — even if you did.”*  
-- ✅ *“Grill kits, gift cards, and a dash of emotional damage — your Christmas sorted.”*
-""")
+    - ✅ *“Christmas magic? Nah, it’s just you panic-buying candles and hoping NZ Post delivers on time.”*  
+    - ✅ *“BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win.”*  
+    - ✅ *“Stocking stuffers under $20 that won’t make you look like you forgot — even if you did.”*  
+    - ✅ *“Grill kits, gift cards, and a dash of emotional damage — your Christmas sorted.”*
+    """)
 
 # ─── Live Creative Generation ──────────────────────────────────────────────────
 
-st.markdown("---")
-st.subheader("📝 Generate More Creative Lines")
+with st.container():
+    st.subheader("📝 Generate More Creative Lines")
 
-# Combine all top posts and their sentiment into a readable summary
-post_summary = "\n".join([f"- \"{item['post']}\" ({item['sentiment']})" for item in top_posts_data])
+    post_summary = "\n".join([f"- \"{item['post']}\" ({item['sentiment']})" for item in top_posts_data])
 
-def generate_creative_lines(topics, sentiment_summary, post_summary):
-    prompt = (
-        "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
-        f"Trending hashtags: {topics}\n"
-        f"Sentiment summary: {sentiment_summary}\n"
-        f"Top posts today:\n{post_summary}\n\n"
-        "Generate 3 short social lines that reflect current retail vibes.\n"
-        "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
-        "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
-        "Speak to the real stress and joy of a Kiwi Christmas: BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
-        "Prioritise emotional truth, campaign utility, and shareability."
-    )
-    try:
-        response = groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}]
+    def generate_creative_lines(topics, sentiment_summary, post_summary):
+        prompt = (
+            "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
+            f"Trending hashtags: {topics}\n"
+            f"Sentiment summary: {sentiment_summary}\n"
+            f"Top posts today:\n{post_summary}\n\n"
+            "Generate 3 short social lines that reflect current retail vibes.\n"
+            "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
+            "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
+            "Speak to the real stress and joy of a Kiwi Christmas: BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
+            "Prioritise emotional truth, campaign utility, and shareability."
         )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"❌ Error generating lines: {e}"
+        try:
+            response = groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            return f"❌ Error generating lines: {e}"
 
-# Initialize session state
-if "creative_lines" not in st.session_state:
-    st.session_state.creative_lines = ""
+    if "creative_lines" not in st.session_state:
+        st.session_state.creative_lines = ""
 
-# Show the post summary being used
-st.markdown("**📌 Using today's top posts for inspiration:**")
-st.markdown(post_summary)
+    st.markdown("**📌 Using today's top posts for inspiration:**")
+    st.markdown(post_summary)
 
-# Button to generate or regenerate
-if st.button("🔁 Generate or Regenerate Ideas"):
-    st.session_state.creative_lines = generate_creative_lines(top_hashtags, sentiment_counts, post_summary)
+    if st.button("🔁 Generate or Regenerate Ideas"):
+        st.session_state.creative_lines = generate_creative_lines(top_hashtags, sentiment_counts, post_summary)
 
-# Display generated lines
-if st.session_state.creative_lines:
-    st.markdown("#### ✨ Generated Lines")
-    for line in st.session_state.creative_lines.split("\n"):
-        if line.strip():
-            st.markdown(f"✅ {line.strip()}")
+    if st.session_state.creative_lines:
+        st.markdown("#### ✨ Generated Lines")
+        for line in st.session_state.creative_lines.split("\n"):
+            if line.strip():
+                st.markdown(f"✅ {line.strip()}")
