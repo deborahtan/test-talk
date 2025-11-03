@@ -46,26 +46,6 @@ top_posts_data = [
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
 st.title("🎄 NZ Christmas Retail Trend Listener + Creative Generator")
 
-# ─── Hashtag Word Cloud ────────────────────────────────────────────────────────
-
-with st.container():
-    st.subheader("🌟 Hashtag Word Cloud")
-    hashtag_freq = {tag: 1 for tag in top_hashtags}
-    wc = WordCloud(width=800, height=300, background_color="white").generate_from_frequencies(hashtag_freq)
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig, use_container_width=True)
-
-    selected_hashtag = st.selectbox("🔍 Click a hashtag to view related posts", top_hashtags)
-    filtered_posts = [p for p in top_posts_data if f"#{selected_hashtag}" in p["post"].lower()]
-    if filtered_posts:
-        st.markdown(f"### 📌 Posts tagged with #{selected_hashtag}")
-        for post in filtered_posts:
-            st.markdown(f"- \"{post['post']}\" ({post['sentiment']})")
-    else:
-        st.markdown(f"⚠️ No posts found for #{selected_hashtag}")
-
 # ─── Sentiment Summary ─────────────────────────────────────────────────────────
 
 with st.container():
@@ -79,6 +59,17 @@ with st.container():
     st.subheader("🎄 Top Posts and Sentiment Overview")
     posts_df = pd.DataFrame(top_posts_data)
     st.dataframe(posts_df, use_container_width=True)
+
+# ─── Static Word Cloud ─────────────────────────────────────────────────────────
+
+with st.container():
+    st.subheader("🌟 Hashtag Word Cloud")
+    hashtag_freq = {tag: 1 for tag in top_hashtags}
+    wc = WordCloud(width=1000, height=400, background_color="white").generate_from_frequencies(hashtag_freq)
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig, use_container_width=True)
 
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
