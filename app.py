@@ -11,7 +11,7 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key=st.secrets["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"])
+groq_client = Groq(api_key=st.secrets["GROQ_API_KEY"])
 GROQ_MODEL = "llama-3.1-8b-instant"
 APIFY_DATASET_URL = st.secrets["https://api.apify.com/v2/datasets/fU0Y0M3aAPofsFXEi/items?format=json&view=overview&clean=true"]
 APIFY_TOKEN = "apify_api_356ndncSWmZqeg1kyAylb8djs1YnZB161LLe"
