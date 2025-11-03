@@ -3,3 +3,5 @@ groq>=0.5.0
 pandas
 matplotlib
 wordcloud
+requests
+scikit-learn
