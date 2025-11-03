@@ -203,9 +203,6 @@ with st.container():
     wc = WordCloud(
         width=400,
         height=150,
-    wc = WordCloud(
-        width=400,
-        height=150,
         max_font_size=40,
         background_color="white",
         prefer_horizontal=1.0
