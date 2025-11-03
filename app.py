@@ -3,99 +3,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
 from groq import Groq
-import requests
-import json
-import re
-from collections import Counter
-from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = "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"
+groq_client = Groq(api_key="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")  # Replace with your actual key
 GROQ_MODEL = "llama-3.1-8b-instant"
-APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/fU0Y0M3aAPofsFXEi/items?format=json&view=overview&clean=true"
-APIFY_TOKEN = "apify_api_356ndncSWmZqeg1kyAylb8djs1YnZB161LLe"
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+# ─── Mock Data ─────────────────────────────────────────────────────────────────
 
-# ─── Data Fetching & Analysis ──────────────────────────────────────────────────
+top_hashtags = [
+    "christmas", "kiwichristmas", "bbqseason", "christmasgift", "stockingstuffers"
+]
 
-@st.cache_data(show_spinner=False)
-def fetch_apify_data():
-    headers = {"Authorization": f"Bearer {APIFY_TOKEN}"}
-    response = requests.get(APIFY_DATASET_URL, headers=headers)
-    response.raise_for_status()
-    return response.json()
+sentiment_counts = {
+    "positive": 34,
+    "neutral": 12,
+    "negative": 8
+}
 
-def analyze_text(text):
-    prompt = (
-        f"Analyze the following social media post:\n\n"
-        f"\"{text}\"\n\n"
-        "Return a JSON with two fields: 'sentiment' (positive, neutral, negative) and 'emotion' "
-        "(e.g., joy, stress, nostalgia, overwhelm, generosity)."
-    )
-    try:
-        response = groq_client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return json.loads(response.choices[0].message.content)
-    except Exception:
-        return {"sentiment": "neutral", "emotion": "neutral"}
+emotional_barometer = {
+    "joy": 28,
+    "stress": 18,
+    "nostalgia": 12,
+    "overwhelm": 10,
+    "generosity": 16
+}
 
-@st.cache_data(show_spinner=False)
-def process_data(raw_data):
-    top_posts_data = []
-    sentiment_counts = {}
-    emotional_barometer = {}
-    top_hashtags = set()
-    keyword_counter = Counter()
+new_trends = [
+    "BBQ kits with free delivery",
+    "Last-minute spa vouchers",
+    "DIY stocking filler hacks"
+]
 
-    for item in raw_data:
-        text = item.get("text", "")
-        analysis = analyze_text(text)
-        sentiment = analysis["sentiment"]
-        emotion = analysis["emotion"]
-
-        sentiment_counts[sentiment] = sentiment_counts.get(sentiment, 0) + 1
-        emotional_barometer[emotion] = emotional_barometer.get(emotion, 0) + 1
-
-        hashtags = [tag.strip("#") for tag in text.split() if tag.startswith("#")]
-        top_hashtags.update(hashtags)
-
-        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
-        keywords = [word for word in words if word not in ENGLISH_STOP_WORDS]
-        keyword_counter.update(keywords)
-
-        top_posts_data.append({
-            "author": item.get("authorMeta.name"),
-            "avatar": item.get("authorMeta.avatar"),
-            "text": text,
-            "sentiment": sentiment,
-            "emotion": emotion,
-            "likes": item.get("diggCount", 0),
-            "shares": item.get("shareCount", 0),
-            "plays": item.get("playCount", 0),
-            "comments": item.get("commentCount", 0),
-            "music": item.get("musicMeta.musicName", ""),
-            "music_author": item.get("musicMeta.musicAuthor", ""),
-            "video_url": item.get("webVideoUrl", ""),
-            "created": item.get("createTimeISO", "")
-        })
-
-    top_keywords = [kw for kw, _ in keyword_counter.most_common(5)]
-
-    return list(top_hashtags), sentiment_counts, emotional_barometer, top_keywords, top_posts_data
-
-# ─── Load and Process ──────────────────────────────────────────────────────────
-
-raw_data = fetch_apify_data()
-top_hashtags, sentiment_counts, emotional_barometer, top_keywords, top_posts_data = process_data(raw_data)
+top_posts_data = [
+    {"post": "Just wrapped the last gift and realised I forgot Mum. Again. #kiwichristmas", "sentiment": "negative"},
+    {"post": "BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win. #bbqseason", "sentiment": "positive"},
+    {"post": "Stocking stuffers under $20 that won’t make you look like you forgot — even if you did. #stockingstuffers", "sentiment": "positive"}
+]
 
 # ─── App Layout ────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
-st.title("🎄 NZ Christmas Retail Trendspotter & Creative Generator V3")
+st.title("🎄 NZ Christmas Retail Trendspotter & Creative Generator V1 Draft")
 
 # ─── Sentiment Summary ─────────────────────────────────────────────────────────
 
@@ -108,34 +57,16 @@ with st.container():
 
 with st.container():
     st.subheader("🎄 Top Posts and Sentiment Overview")
-
-    for post in top_posts_data:
-        st.markdown("---")
-        cols = st.columns([1, 5])
-
-        with cols[0]:
-            st.image(post["avatar"], width=80)
-
-        with cols[1]:
-            st.markdown(f"**Author:** {post['author']}")
-            st.markdown(f"**Posted:** {post['created']}")
-            st.markdown(f"**Text:** {post['text']}")
-            st.markdown(f"**Sentiment:** {post['sentiment'].capitalize()} | **Emotion:** {post['emotion'].capitalize()}")
-            st.markdown(f"**🎵 Music:** {post['music']} by {post['music_author']}")
-            st.markdown(f"**📊 Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
-            st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
-            st.video(post["video_url"])
+    posts_df = pd.DataFrame(top_posts_data)
+    st.dataframe(posts_df, use_container_width=True)
 
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
 with st.container():
     st.subheader("🧠 Trend Spotter")
-    st.markdown("**📈 Top Keywords from Posts:**")
-    if top_keywords:
-        for kw in top_keywords:
-            st.markdown(f"- {kw}")
-    else:
-        st.markdown("No trends detected.")
+    st.markdown("**📈 New Trends Identified:**")
+    for trend in new_trends:
+        st.markdown(f"- {trend}")
 
     st.markdown("**📊 Emotional Barometer (Post Volume):**")
     for emotion, count in emotional_barometer.items():
@@ -151,16 +82,26 @@ with st.container():
 
 with st.container():
     st.subheader("✨ Creative Ideas Based on Trends")
+    st.markdown("""
+    These lines reflect current sentiment — a mix of excitement, stress, and Kiwi practicality:
 
-    post_summary = "\n".join([f"- \"{item['text']}\" ({item['sentiment']})" for item in top_posts_data])
-    hashtag_summary = ", ".join(top_hashtags)
-    keyword_summary = ", ".join(top_keywords)
+    - ✅ *“Christmas magic? Nah, it’s just you panic-buying candles and hoping NZ Post delivers on time.”*  
+    - ✅ *“BBQ smoke, pōhutukawa shade, and a gift that actually lands — now that’s a win.”*  
+    - ✅ *“Stocking stuffers under $20 that won’t make you look like you forgot — even if you did.”*  
+    - ✅ *“Grill kits, gift cards, and a dash of emotional damage — your Christmas sorted.”*
+    """)
+
+# ─── Live Creative Generation ──────────────────────────────────────────────────
+
+with st.container():
+    st.subheader("📝 Generate More Creative Lines")
+
+    post_summary = "\n".join([f"- \"{item['post']}\" ({item['sentiment']})" for item in top_posts_data])
 
     def generate_creative_lines(topics, sentiment_summary, post_summary):
         prompt = (
             "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
             f"Trending hashtags: {topics}\n"
-            f"Trending keywords: {keyword_summary}\n"
             f"Sentiment summary: {sentiment_summary}\n"
             f"Top posts today:\n{post_summary}\n\n"
             "Generate 3 short social lines that reflect current retail vibes.\n"
@@ -185,7 +126,7 @@ with st.container():
     st.markdown(post_summary)
 
     if st.button("🔁 Generate or Regenerate Ideas"):
-        st.session_state.creative_lines = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
+        st.session_state.creative_lines = generate_creative_lines(top_hashtags, sentiment_counts, post_summary)
 
     if st.session_state.creative_lines:
         st.markdown("#### ✨ Generated Lines")
@@ -193,11 +134,11 @@ with st.container():
             if line.strip():
                 st.markdown(f"✅ {line.strip()}")
 
-# ─── Static Word Cloud ─────────────────────────────────────────────────────────
+# ─── Static Word Cloud (Final Section) ─────────────────────────────────────────
 
 with st.container():
     st.markdown("---")
-    st.subheader("🌟 Hashtag Word Cloud")
+    st.subheader("🌟 Hashtag Word Cloud - I am under construction")
 
     hashtag_freq = {tag: 1 for tag in top_hashtags}
     wc = WordCloud(
