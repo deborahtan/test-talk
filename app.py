@@ -6,7 +6,7 @@ from groq import Groq
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 
-groq_client = Groq(api_key="your_groq_api_key")  # Replace with your actual key
+groq_client = Groq(api_key="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")  # Replace with your actual key
 GROQ_MODEL = "llama-3.1-8b-instant"
 
 # ─── Mock Data ─────────────────────────────────────────────────────────────────
