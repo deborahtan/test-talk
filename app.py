@@ -60,17 +60,6 @@ with st.container():
     posts_df = pd.DataFrame(top_posts_data)
     st.dataframe(posts_df, use_container_width=True)
 
-# ─── Static Word Cloud ─────────────────────────────────────────────────────────
-
-with st.container():
-    st.subheader("🌟 Hashtag Word Cloud")
-    hashtag_freq = {tag: 1 for tag in top_hashtags}
-    wc = WordCloud(width=1000, height=400, background_color="white").generate_from_frequencies(hashtag_freq)
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig, use_container_width=True)
-
 # ─── Trend Spotter ─────────────────────────────────────────────────────────────
 
 with st.container():
@@ -144,3 +133,17 @@ with st.container():
         for line in st.session_state.creative_lines.split("\n"):
             if line.strip():
                 st.markdown(f"✅ {line.strip()}")
+
+# ─── Static Word Cloud (Final Section) ─────────────────────────────────────────
+
+with st.container():
+    st.markdown("---")
+    st.subheader("🌟 Hashtag Word Cloud")
+
+    hashtag_freq = {tag: 1 for tag in top_hashtags}
+    wc = WordCloud(width=600, height=200, background_color="white").generate_from_frequencies(hashtag_freq)
+
+    fig, ax = plt.subplots(figsize=(6, 2.5))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig, use_container_width=True)
