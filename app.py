@@ -141,9 +141,16 @@ with st.container():
     st.subheader("🌟 Hashtag Word Cloud")
 
     hashtag_freq = {tag: 1 for tag in top_hashtags}
-    wc = WordCloud(width=600, height=200, background_color="white").generate_from_frequencies(hashtag_freq)
+    wc = WordCloud(
+        width=400,
+        height=150,
+        max_font_size=40,
+        background_color="white",
+        prefer_horizontal=1.0
+    ).generate_from_frequencies(hashtag_freq)
 
-    fig, ax = plt.subplots(figsize=(6, 2.5))
+    fig, ax = plt.subplots(figsize=(4, 1.5))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
     st.pyplot(fig, use_container_width=True)
+
