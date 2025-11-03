@@ -44,7 +44,7 @@ top_posts_data = [
 # ─── App Layout ────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
-st.title("🎄 NZ Christmas Retail Trend Listener + Creative Generator")
+st.title("🎄 NZ Christmas Retail Trendspotter & Creative Generator V1 Draft")
 
 # ─── Sentiment Summary ─────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ with st.container():
 
 with st.container():
     st.markdown("---")
-    st.subheader("🌟 Hashtag Word Cloud")
+    st.subheader("🌟 Hashtag Word Cloud - I am under construction")
 
     hashtag_freq = {tag: 1 for tag in top_hashtags}
     wc = WordCloud(
