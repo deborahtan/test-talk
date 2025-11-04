@@ -48,7 +48,6 @@ def process_data(raw_data):
     top_posts_data = []
     sentiment_counts = {}
     emotional_barometer = {}
-    top_hashtags = []
     hashtag_counter = Counter()
     keyword_counter = Counter()
 
@@ -63,7 +62,6 @@ def process_data(raw_data):
 
         hashtags = [tag.strip("#") for tag in text.split() if tag.startswith("#")]
         hashtag_counter.update(hashtags)
-        top_hashtags.extend(hashtags)
 
         words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
         keywords = [word for word in words if word not in ENGLISH_STOP_WORDS]
@@ -86,7 +84,6 @@ def process_data(raw_data):
         })
 
     top_keywords = [kw for kw, _ in keyword_counter.most_common(5)]
-
     return hashtag_counter, sentiment_counts, emotional_barometer, top_keywords, top_posts_data
 
 # ─── Load and Process ──────────────────────────────────────────────────────────
@@ -156,7 +153,8 @@ with st.container():
 with st.container():
     st.subheader("✨ Creative Ideas Based on Trends")
 
-    post_summary = "\n".join([f"- \"{item['text']}\" ({item['sentiment']})" for item in top_posts_data])
+    top_5_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:5]
+    post_summary = "\n".join([f"- \"{item['text'][:120].strip()}...\" ({item['sentiment']})" for item in top_5_posts])
     hashtag_summary = ", ".join(hashtag_counter.keys())
     keyword_summary = ", ".join(top_keywords)
 
@@ -166,7 +164,7 @@ with st.container():
             f"Trending hashtags: {topics}\n"
             f"Trending keywords: {keyword_summary}\n"
             f"Sentiment summary: {sentiment_summary}\n"
-            f"Top posts today:\n{post_summary}\n\n"
+            f"Top 5 post excerpts:\n{post_summary}\n\n"
             "Generate 3 short social lines that reflect current retail vibes.\n"
             "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
             "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
@@ -185,7 +183,7 @@ with st.container():
     if "creative_lines" not in st.session_state:
         st.session_state.creative_lines = ""
 
-    st.markdown("**📌 Using today's top posts for inspiration:**")
+    st.markdown("**📌 Using today's top 5 posts for inspiration:**")
     st.markdown(post_summary)
 
     if st.button("🔁 Generate or Regenerate Ideas"):
@@ -196,45 +194,3 @@ with st.container():
         for line in st.session_state.creative_lines.split("\n"):
             if line.strip():
                 st.markdown(f"✅ {line.strip()}")
-
-                           
-        # ─── Interactive Word Cloud ────────────────────────────────────────────────────
-
-with st.container():
-    st.markdown("---")
-    st.subheader("🌟 Hashtag Word Cloud")
-
-    # Generate word cloud from hashtag frequency
-    wc = WordCloud(
-        width=800,
-        height=300,
-        max_font_size=60,
-        background_color="white",
-        prefer_horizontal=1.0
-    ).generate_from_frequencies(hashtag_counter)
-
-    fig, ax = plt.subplots(figsize=(8, 3))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig, use_container_width=True)
-
-    # Hashtag selector
-    st.markdown("### 🔍 Explore Posts by Hashtag")
-    selected_tag = st.selectbox("Choose a hashtag to filter posts:", options=list(hashtag_counter.keys()))
-
-    if selected_tag:
-        filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
-        st.markdown(f"#### 🎯 Showing posts with **#{selected_tag}**")
-
-        for i, post in enumerate(filtered_posts):
-            with st.expander(f"📹 Post {i+1} by {post['author']} — {post['sentiment'].capitalize()}, {post['emotion'].capitalize()}"):
-                cols = st.columns([1, 5])
-                with cols[0]:
-                    st.image(post["avatar"], width=80)
-                with cols[1]:
-                    st.markdown(f"**Posted:** {post['created']}")
-                    st.markdown(f"**Text:** {post['text']}")
-                    st.markdown(f"**🎵 Music:** {post['music']} by {post['music_author']}")
-                    st.markdown(f"**📊 Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
-                    st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
-                    st.video(post["video_url"], format="video/mp4", start_time=0)
