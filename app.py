@@ -148,28 +148,29 @@ with st.container():
                 st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
                 st.video(post["video_url"], format="video/mp4", start_time=0)
 
+
 # ─── Creative Ideas ────────────────────────────────────────────────────────────
 
 with st.container():
     st.subheader("✨ Creative Ideas Based on Trends")
 
-    top_5_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:5]
-    post_summary = "\n".join([f"- \"{item['text'][:120].strip()}...\" ({item['sentiment']})" for item in top_5_posts])
+    top_20_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:20]
+    post_summary = "\n".join([f"- \"{item['text'][:100].strip()}...\" ({item['sentiment']}, {item['emotion']})" for item in top_20_posts])
     hashtag_summary = ", ".join(hashtag_counter.keys())
     keyword_summary = ", ".join(top_keywords)
 
     def generate_creative_lines(topics, sentiment_summary, post_summary):
         prompt = (
-            "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
+            "You're a creative strategist helping NZ retailers connect with shoppers this Christmas.\n\n"
             f"Trending hashtags: {topics}\n"
             f"Trending keywords: {keyword_summary}\n"
             f"Sentiment summary: {sentiment_summary}\n"
-            f"Top 5 post excerpts:\n{post_summary}\n\n"
-            "Generate 3 short social lines that reflect current retail vibes.\n"
-            "They should be emotionally resonant, cheeky, and Kiwi-flavoured — designed for campaign use.\n\n"
-            "Tone: festive but dry, emotionally honest, and culturally grounded. Avoid clichés.\n"
-            "Speak to the real stress and joy of a Kiwi Christmas: BBQ prep, tamariki meltdowns, last-minute gifting, and whānau dynamics.\n"
-            "Prioritise emotional truth, campaign utility, and shareability."
+            f"Top 20 post excerpts:\n{post_summary}\n\n"
+            "Categorize the emotional tone and campaign themes from these posts.\n"
+            "Return a summary with one main heading and two subheadings:\n"
+            "1. Emotional Landscape — describe the dominant emotions and tone\n"
+            "2. Creative Direction — suggest how brands should respond in tone and messaging\n"
+            "Use a confident, strategic voice. Be culturally grounded and Kiwi-aware."
         )
         try:
             response = groq_client.chat.completions.create(
@@ -180,17 +181,58 @@ with st.container():
         except Exception as e:
             return f"❌ Error generating lines: {e}"
 
-    if "creative_lines" not in st.session_state:
-        st.session_state.creative_lines = ""
+    if "creative_summary" not in st.session_state:
+        st.session_state.creative_summary = ""
 
-    st.markdown("**📌 Using today's top 5 posts for inspiration:**")
+    st.markdown("**📌 Using today's top 20 posts for inspiration:**")
     st.markdown(post_summary)
 
-    if st.button("🔁 Generate or Regenerate Ideas"):
-        st.session_state.creative_lines = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
+    if st.button("🧠 Generate Strategic Summary"):
+        st.session_state.creative_summary = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
 
-    if st.session_state.creative_lines:
-        st.markdown("#### ✨ Generated Lines")
-        for line in st.session_state.creative_lines.split("\n"):
-            if line.strip():
-                st.markdown(f"✅ {line.strip()}")
+    if st.session_state.creative_summary:
+        st.markdown("#### 🧭 Strategic Summary")
+        st.markdown(st.session_state.creative_summary)
+
+# ─── Interactive Word Cloud ────────────────────────────────────────────────────
+
+with st.container():
+    st.markdown("---")
+    st.subheader("🌟 Hashtag Word Cloud")
+
+    # Limit to top 30 hashtags
+    top_30_hashtags = dict(hashtag_counter.most_common(30))
+
+    wc = WordCloud(
+        width=800,
+        height=300,
+        max_font_size=60,
+        background_color="white",
+        prefer_horizontal=1.0
+    ).generate_from_frequencies(top_30_hashtags)
+
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig, use_container_width=True)
+
+    # Hashtag selector
+    st.markdown("### 🔍 Explore Posts by Hashtag")
+    selected_tag = st.selectbox("Choose a hashtag to filter posts:", options=list(top_30_hashtags.keys()))
+
+    if selected_tag:
+        filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
+        st.markdown(f"#### 🎯 Showing posts with **#{selected_tag}**")
+
+        for i, post in enumerate(filtered_posts):
+            with st.expander(f"📹 Post {i+1} by {post['author']} — {post['sentiment'].capitalize()}, {post['emotion'].capitalize()}"):
+                cols = st.columns([1, 5])
+                with cols[0]:
+                    st.image(post["avatar"], width=80)
+                with cols[1]:
+                    st.markdown(f"**Posted:** {post['created']}")
+                    st.markdown(f"**Text:** {post['text']}")
+                    st.markdown(f"**🎵 Music:** {post['music']} by {post['music_author']}")
+                    st.markdown(f"**📊 Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
+                    st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
+                    st.video(post["video_url"], format="video/mp4", start_time=0)
