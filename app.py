@@ -12,12 +12,14 @@ from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
 # ─── API Keys and Clients ──────────────────────────────────────────────────────
 
-GROQ_API_KEY = "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"
-GROQ_MODEL = "llama-3.1-8b-instant"
-APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/fU0Y0M3aAPofsFXEi/items?format=json&view=overview&clean=true"
-APIFY_TOKEN = "apify_api_356ndncSWmZqeg1kyAylb8djs1YnZB161LLe"
+GROQ_API_KEY = "your_groq_api_key"
+GROQ_MODEL = "llama-3-1-8b-instant"
+APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/your_dataset_id/items?format=json&clean=true"
+APIFY_TOKEN = "your_apify_token"
 
 groq_client = Groq(api_key=GROQ_API_KEY)
+
+# ─── Data Fetching and Analysis ────────────────────────────────────────────────
 
 @st.cache_data(show_spinner=False)
 def fetch_apify_data():
@@ -141,7 +143,7 @@ if st.button("🔁 Load 10 More"):
 
 # ─── Creative Line Generator ───────────────────────────────────────────────────
 
-st.subheader("✨ Creative Ideas Based on Trends")
+st.subheader("✨ Generate Creative Lines")
 
 top_20_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:20]
 post_summary = "\n".join([f"- \"{item['text'][:100].strip()}...\" ({item['sentiment']}, {item['emotion']})" for item in top_20_posts])
@@ -165,10 +167,7 @@ def generate_creative_lines(topics, sentiment_summary, post_summary):
         f"Trending keywords: {keyword_summary}\n"
         f"Sentiment summary: {sentiment_summary}\n"
         f"Top 20 post excerpts:\n{post_summary}\n\n"
-        "Return a summary with one main heading and two subheadings:\n"
-        "1. Emotional Landscape — describe the dominant emotions and tone\n"
-        "2. Creative Direction — suggest how brands should respond in tone and messaging\n"
-        "Use a confident, strategic voice. Be culturally grounded and Kiwi-aware."
+        "Return 3 witty, emotionally honest lines that Kiwi retailers could use in Christmas campaigns."
     )
     try:
         response = groq_client.chat.completions.create(
@@ -179,44 +178,45 @@ def generate_creative_lines(topics, sentiment_summary, post_summary):
     except Exception as e:
         return f"❌ Error generating lines: {e}"
 
-if "creative_summary" not in st.session_state:
-    st.session_state.creative_summary = ""
+if "creative_lines" not in st.session_state:
+    st.session_state.creative_lines = ""
 
-st.markdown("**📌 Using today's top 20 posts for inspiration:**")
-st.markdown(post_summary)
+if st.button("🧠 Generate Creative Lines"):
+    st.session_state.creative_lines = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
 
-if st.button("🧠 Generate Strategic Summary"):
-    st.session_state.creative_summary = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
-
-if st.session_state.creative_summary:
-    st.markdown("#### 🧭 Strategic Summary")
-    st.markdown(st.session_state.creative_summary)
-    copy_to_clipboard(st.session_state.creative_summary)
+if st.session_state.creative_lines:
+    st.markdown("#### 💡 Creative Lines")
+    st.markdown(st.session_state.creative_lines)
+    copy_to_clipboard(st.session_state.creative_lines)
 
 # ─── Expandable Word Cloud ─────────────────────────────────────────────────────
 
-st.subheader("🌈 Hashtag Word Cloud")
+st.subheader("Word Cloud")
 
 top_30_hashtags = dict(hashtag_counter.most_common(30))
 
 with st.expander("📈 Click to expand hashtag cloud"):
     wc = WordCloud(
-        width=600,
-        height=200,
-        max_font_size=50,
+        width=400,
+        height=120,
+        max_font_size=30,
         background_color="white",
         prefer_horizontal=1.0
     ).generate_from_frequencies(top_30_hashtags)
 
-    fig, ax = plt.subplots(figsize=(6, 2))
+    fig, ax = plt.subplots(figsize=(4, 1.5))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
     st.pyplot(fig, use_container_width=True)
 
-st.markdown("### 🔍 Explore Posts by Hashtag")
-selected_tag = st.selectbox("Select a hashtag to view relevant posts", options=[""] + list(top_30_hashtags.keys()))
+# ─── Hashtag Filter ────────────────────────────────────────────────────────────
 
-if selected_tag and selected_tag != "":
+st.markdown("### 🔍 Explore Posts by Hashtag")
+tag_options = [f"{tag} ({count} posts)" for tag, count in top_30_hashtags.items()]
+selected_tag_raw = st.selectbox("Select a hashtag to view relevant posts", options=[""] + tag_options)
+
+if selected_tag_raw and selected_tag_raw != "":
+    selected_tag = selected_tag_raw.split(" ")[0]
     filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
     st.markdown(f"#### 🎯 Showing {len(filtered_posts)} posts with **#{selected_tag}**")
 
@@ -237,4 +237,3 @@ if selected_tag and selected_tag != "":
 
 st.markdown("---")
 st.markdown("Powered by Dentsu")
-
