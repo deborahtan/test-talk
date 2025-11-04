@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import matplotlib.pyplot as plt
 from wordcloud import WordCloud
@@ -9,7 +10,7 @@ import re
 from collections import Counter
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
-# ─── Setup ─────────────────────────────────────────────────────────────────────
+# ─── API Keys and Clients ──────────────────────────────────────────────────────
 
 GROQ_API_KEY = "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"
 GROQ_MODEL = "llama-3.1-8b-instant"
@@ -17,8 +18,6 @@ APIFY_DATASET_URL = "https://api.apify.com/v2/datasets/fU0Y0M3aAPofsFXEi/items?f
 APIFY_TOKEN = "apify_api_356ndncSWmZqeg1kyAylb8djs1YnZB161LLe"
 
 groq_client = Groq(api_key=GROQ_API_KEY)
-
-# ─── Data Fetching & Analysis ──────────────────────────────────────────────────
 
 @st.cache_data(show_spinner=False)
 def fetch_apify_data():
@@ -31,17 +30,21 @@ def analyze_text(text):
     prompt = (
         f"Analyze the following social media post:\n\n"
         f"\"{text}\"\n\n"
-        "Return a JSON with two fields: 'sentiment' (positive, neutral, negative) and 'emotion' "
-        "(e.g., joy, stress, nostalgia, overwhelm, generosity, excitement, frustration, relief)."
+        "Return a JSON with three fields: 'sentiment' (positive, neutral, negative), 'emotion' "
+        "(e.g., joy, stress, nostalgia, overwhelm, generosity, excitement, frustration, relief), and 'confidence' (0 to 1)."
     )
     try:
         response = groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": prompt}]
         )
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(response.choices[0].message.content)
+        if result.get("confidence", 0) < 0.5:
+            result["sentiment"] = "neutral"
+            result["emotion"] = "unclear"
+        return result
     except Exception:
-        return {"sentiment": "neutral", "emotion": "neutral"}
+        return {"sentiment": "neutral", "emotion": "unclear", "confidence": 0}
 
 @st.cache_data(show_spinner=False)
 def process_data(raw_data):
@@ -86,56 +89,138 @@ def process_data(raw_data):
     top_keywords = [kw for kw, _ in keyword_counter.most_common(5)]
     return hashtag_counter, sentiment_counts, emotional_barometer, top_keywords, top_posts_data
 
-# ─── Load and Process ──────────────────────────────────────────────────────────
+# ─── Streamlit Page Setup ──────────────────────────────────────────────────────
 
-hashtag_counter, sentiment_counts, emotional_barometer, top_keywords, top_posts_data = process_data(fetch_apify_data())
+st.set_page_config(page_title="NZ Christmas Retail Trendspotter", layout="wide")
+st.title("🎄 NZ Christmas Retail Trendspotter")
+st.caption("Real-time TikTok insights for Kiwi campaigns")
 
-# ─── App Layout ────────────────────────────────────────────────────────────────
+# ─── Sidebar Date Range Selector ───────────────────────────────────────────────
 
-st.set_page_config(page_title="NZ Christmas Retail Trend Generator", layout="wide")
-st.title("🎄 NZ Christmas Retail Trendspotter & Creative Generator V3")
+st.sidebar.title("📅 Date Range")
+date_range = st.sidebar.radio("View trends from:", ["Last 24 hours", "Last 7 days"])
 
-# ─── Trend Spotter ─────────────────────────────────────────────────────────────
+# ─── Load and Process Data ─────────────────────────────────────────────────────
 
-with st.container():
-    st.subheader("🧠 Trend Spotter")
+raw_data = fetch_apify_data()
+hashtag_counter, sentiment_counts, emotional_barometer, top_keywords, top_posts_data = process_data(raw_data)
 
-    total_emotions = sum(emotional_barometer.values())
-    sorted_emotions = sorted(emotional_barometer.items(), key=lambda x: x[1], reverse=True)
-    top_emotion = sorted_emotions[0][0]
-    top_emotion_percent = round((sorted_emotions[0][1] / total_emotions) * 100, 1)
+# ─── Trend Summary ─────────────────────────────────────────────────────────────
 
-    keyword_summary = ", ".join(top_keywords) if top_keywords else "no clear keywords"
-    music_mentions = [post["music"] for post in top_posts_data if post["music"]]
-    top_music = Counter(music_mentions).most_common(1)
-    music_summary = top_music[0][0] if top_music else "no dominant track"
+st.subheader("🔥 Vibe Check")
+top_emotion = max(emotional_barometer, key=emotional_barometer.get)
+st.markdown(f"**Dominant Emotion:** {top_emotion.capitalize()}")
+st.markdown(f"**Trending Keywords:** {', '.join(top_keywords)}")
 
-    st.markdown(f"""
-    ### 🔥 Vibe Check: {top_emotion.capitalize()} is in the air ({top_emotion_percent}% of posts)
+top_songs = list({post["music"] for post in top_posts_data if post["music"]})[:3]
+if top_songs:
+    st.markdown(f"**Top Songs:** {', '.join(top_songs)}")
 
-    The streets of TikTok are humming with **{top_emotion}** — whether it's festive chaos, gift-induced panic, or full-blown BBQ euphoria. 
-    This isn't your grandma's Christmas. It's messy, emotional, and gloriously Kiwi.
+# ─── Top Posts Viewer ──────────────────────────────────────────────────────────
 
-    **Trending keywords?** Think: {keyword_summary}.  
-    Translation: we're talking tamariki tantrums, last-minute gifting, and the sacred art of wrapping with leftover newspaper.
+st.subheader("🎥 Top TikTok Posts")
+if "post_offset" not in st.session_state:
+    st.session_state.post_offset = 0
 
-    **Soundtrack of the moment?** It's all about **{music_summary}** — setting the tone for backyard dance-offs and driveway rants.
+visible_posts = top_posts_data[st.session_state.post_offset:st.session_state.post_offset + 10]
+for i, post in enumerate(visible_posts):
+    with st.expander(f"📹 Post {i+1 + st.session_state.post_offset} by {post['author']} — {post['sentiment'].capitalize()}, {post['emotion'].capitalize()}"):
+        cols = st.columns([1, 5])
+        with cols[0]:
+            st.image(post["avatar"], width=80)
+        with cols[1]:
+            st.markdown(f"**Posted:** {post['created']}")
+            st.markdown(f"**Text:** {post['text']}")
+            st.markdown(f"**🎵 Music:** {post['music']} by {post['music_author']}")
+            st.markdown(f"**📊 Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
+            st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
+            st.video(post["video_url"], format="video/mp4", start_time=0)
 
-    So if you're crafting campaigns, lean into the madness. Celebrate the stress. Romanticize the rush.  
-    Because this Christmas, realness is the new sparkle ✨.
-    """)
+if st.button("🔁 Load 10 More"):
+    st.session_state.post_offset += 10
 
-    st.markdown("### 📊 Emotional Barometer")
-    for emotion, count in sorted_emotions:
-        percent = round((count / total_emotions) * 100, 1)
-        st.markdown(f"- **{emotion.capitalize()}**: {count} posts ({percent}%)")
+# ─── Creative Line Generator ───────────────────────────────────────────────────
 
-# ─── Top Posts Table ───────────────────────────────────────────────────────────
+st.subheader("✨ Creative Ideas Based on Trends")
 
-with st.container():
-    st.subheader("🎄 Top Posts and Sentiment Overview")
+top_20_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:20]
+post_summary = "\n".join([f"- \"{item['text'][:100].strip()}...\" ({item['sentiment']}, {item['emotion']})" for item in top_20_posts])
+hashtag_summary = ", ".join(hashtag_counter.keys())
+keyword_summary = ", ".join(top_keywords)
 
-    for i, post in enumerate(top_posts_data):
+def copy_to_clipboard(text):
+    components.html(f"""
+        <script>
+        function copyText() {{
+            navigator.clipboard.writeText(`{text}`);
+        }}
+        </script>
+        <button onclick="copyText()">📋 Copy to Clipboard</button>
+    """, height=40)
+
+def generate_creative_lines(topics, sentiment_summary, post_summary):
+    prompt = (
+        "Come up with some witty one-liners that are Christmas-themed but also culturally relevant in 2025's Xmas season.\n\n"
+        f"Trending hashtags: {topics}\n"
+        f"Trending keywords: {keyword_summary}\n"
+        f"Sentiment summary: {sentiment_summary}\n"
+        f"Top 20 post excerpts:\n{post_summary}\n\n"
+        "Return a summary with one main heading and two subheadings:\n"
+        "1. Emotional Landscape — describe the dominant emotions and tone\n"
+        "2. Creative Direction — suggest how brands should respond in tone and messaging\n"
+        "Use a confident, strategic voice. Be culturally grounded and Kiwi-aware."
+    )
+    try:
+        response = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"❌ Error generating lines: {e}"
+
+if "creative_summary" not in st.session_state:
+    st.session_state.creative_summary = ""
+
+st.markdown("**📌 Using today's top 20 posts for inspiration:**")
+st.markdown(post_summary)
+
+if st.button("🧠 Generate Strategic Summary"):
+    st.session_state.creative_summary = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
+
+if st.session_state.creative_summary:
+    st.markdown("#### 🧭 Strategic Summary")
+    st.markdown(st.session_state.creative_summary)
+    copy_to_clipboard(st.session_state.creative_summary)
+
+# ─── Expandable Word Cloud ─────────────────────────────────────────────────────
+
+st.subheader("🌈 Hashtag Word Cloud")
+
+top_30_hashtags = dict(hashtag_counter.most_common(30))
+
+with st.expander("📈 Click to expand hashtag cloud"):
+    wc = WordCloud(
+        width=600,
+        height=200,
+        max_font_size=50,
+        background_color="white",
+        prefer_horizontal=1.0
+    ).generate_from_frequencies(top_30_hashtags)
+
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig, use_container_width=True)
+
+st.markdown("### 🔍 Explore Posts by Hashtag")
+selected_tag = st.selectbox("Select a hashtag to view relevant posts", options=[""] + list(top_30_hashtags.keys()))
+
+if selected_tag and selected_tag != "":
+    filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
+    st.markdown(f"#### 🎯 Showing {len(filtered_posts)} posts with **#{selected_tag}**")
+
+    for i, post in enumerate(filtered_posts):
         with st.expander(f"📹 Post {i+1} by {post['author']} — {post['sentiment'].capitalize()}, {post['emotion'].capitalize()}"):
             cols = st.columns([1, 5])
             with cols[0]:
@@ -148,91 +233,8 @@ with st.container():
                 st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
                 st.video(post["video_url"], format="video/mp4", start_time=0)
 
+# ─── Footer ────────────────────────────────────────────────────────────────────
 
-# ─── Creative Ideas ────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("Powered by Dentsu")
 
-with st.container():
-    st.subheader("✨ Creative Ideas Based on Trends")
-
-    top_20_posts = sorted(top_posts_data, key=lambda x: x["likes"] + x["shares"] + x["comments"], reverse=True)[:20]
-    post_summary = "\n".join([f"- \"{item['text'][:100].strip()}...\" ({item['sentiment']}, {item['emotion']})" for item in top_20_posts])
-    hashtag_summary = ", ".join(hashtag_counter.keys())
-    keyword_summary = ", ".join(top_keywords)
-
-    def generate_creative_lines(topics, sentiment_summary, post_summary):
-        prompt = (
-            "You're a creative strategist helping NZ retailers connect with shoppers this Christmas.\n\n"
-            f"Trending hashtags: {topics}\n"
-            f"Trending keywords: {keyword_summary}\n"
-            f"Sentiment summary: {sentiment_summary}\n"
-            f"Top 20 post excerpts:\n{post_summary}\n\n"
-            "Categorize the emotional tone and campaign themes from these posts.\n"
-            "Return a summary with one main heading and two subheadings:\n"
-            "1. Emotional Landscape — describe the dominant emotions and tone\n"
-            "2. Creative Direction — suggest how brands should respond in tone and messaging\n"
-            "Use a confident, strategic voice. Be culturally grounded and Kiwi-aware."
-        )
-        try:
-            response = groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"❌ Error generating lines: {e}"
-
-    if "creative_summary" not in st.session_state:
-        st.session_state.creative_summary = ""
-
-    st.markdown("**📌 Using today's top 20 posts for inspiration:**")
-    st.markdown(post_summary)
-
-    if st.button("🧠 Generate Strategic Summary"):
-        st.session_state.creative_summary = generate_creative_lines(hashtag_summary, sentiment_counts, post_summary)
-
-    if st.session_state.creative_summary:
-        st.markdown("#### 🧭 Strategic Summary")
-        st.markdown(st.session_state.creative_summary)
-
-# ─── Interactive Word Cloud ────────────────────────────────────────────────────
-
-with st.container():
-    st.markdown("---")
-    st.subheader("🌟 Hashtag Word Cloud")
-
-    # Limit to top 30 hashtags
-    top_30_hashtags = dict(hashtag_counter.most_common(30))
-
-    wc = WordCloud(
-        width=800,
-        height=300,
-        max_font_size=60,
-        background_color="white",
-        prefer_horizontal=1.0
-    ).generate_from_frequencies(top_30_hashtags)
-
-    fig, ax = plt.subplots(figsize=(8, 3))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig, use_container_width=True)
-
-    # Hashtag selector
-    st.markdown("### 🔍 Explore Posts by Hashtag")
-    selected_tag = st.selectbox("Select a hashtag to view relevant posts", options=[""] + list(top_30_hashtags.keys()))
-
-    if selected_tag and selected_tag != "":
-        filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
-        st.markdown(f"#### 🎯 Showing posts with **#{selected_tag}**")
-
-        for i, post in enumerate(filtered_posts):
-            with st.expander(f"📹 Post {i+1} by {post['author']} — {post['sentiment'].capitalize()}, {post['emotion'].capitalize()}"):
-                cols = st.columns([1, 5])
-                with cols[0]:
-                    st.image(post["avatar"], width=80)
-                with cols[1]:
-                    st.markdown(f"**Posted:** {post['created']}")
-                    st.markdown(f"**Text:** {post['text']}")
-                    st.markdown(f"**🎵 Music:** {post['music']} by {post['music_author']}")
-                    st.markdown(f"**📊 Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
-                    st.markdown(f"[🔗 View on TikTok]({post['video_url']})")
-                    st.video(post["video_url"], format="video/mp4", start_time=0)
