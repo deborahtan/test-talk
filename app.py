@@ -218,9 +218,9 @@ with st.container():
 
     # Hashtag selector
     st.markdown("### 🔍 Explore Posts by Hashtag")
-    selected_tag = st.selectbox("Choose a hashtag to filter posts:", options=list(top_30_hashtags.keys()))
+    selected_tag = st.selectbox("Select a hashtag to view relevant posts", options=[""] + list(top_30_hashtags.keys()))
 
-    if selected_tag:
+    if selected_tag and selected_tag != "":
         filtered_posts = [post for post in top_posts_data if f"#{selected_tag}" in post["text"]]
         st.markdown(f"#### 🎯 Showing posts with **#{selected_tag}**")
 
