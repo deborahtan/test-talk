@@ -160,7 +160,7 @@ with st.container():
     hashtag_summary = ", ".join(hashtag_counter.keys())
     keyword_summary = ", ".join(top_keywords)
 
-        def generate_creative_lines(topics, sentiment_summary, post_summary):
+    def generate_creative_lines(topics, sentiment_summary, post_summary):
         prompt = (
             "You're a creative assistant helping New Zealand retailers connect with shoppers during the Christmas season.\n\n"
             f"Trending hashtags: {topics}\n"
@@ -196,6 +196,7 @@ with st.container():
         for line in st.session_state.creative_lines.split("\n"):
             if line.strip():
                 st.markdown(f"✅ {line.strip()}")
+
                            
         # ─── Interactive Word Cloud ────────────────────────────────────────────────────
 
