@@ -345,11 +345,7 @@ def clean_output(text):
     if not isinstance(text, str):
         return ""
     # remove patterns like [Insert Chart 1: ...] and any <Chart: ...> tokens
-    text = re.sub(r"
-
-\[Insert Chart \d+:.*?\]
-
-", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[Insert Chart \d+:.*?\]", "", text, flags=re.DOTALL)
     text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
     # fix run-together numbers/letters like "285million" -> "285 million"
     text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
