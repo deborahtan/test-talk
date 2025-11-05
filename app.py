@@ -75,7 +75,6 @@ def safe_text(s):
     """
     if s is None:
         return ""
-    # pandas NaN is a float; catch it
     try:
         if isinstance(s, float) and math.isnan(s):
             return ""
@@ -110,17 +109,44 @@ def normalize_item(item):
                 return None
         return cur
     return {
-        "author": g("authorMeta.name") or g("author") or g("author_name"),
-        "avatar": g("authorMeta.avatar") or g("authorAvatar") or g("author_image"),
+        "id": g("id") or "",
+        "user": g("user") or "",
         "text": g("text") or g("caption") or g("description") or "",
         "likes": safe_int(g("diggCount") or g("likeCount") or g("likes") or 0),
         "shares": safe_int(g("shareCount") or g("shares") or 0),
         "plays": safe_int(g("playCount") or g("plays") or g("views") or 0),
         "comments": safe_int(g("commentCount") or g("comments") or 0),
-        "music": g("musicMeta.musicName") or "",
+        "music": g("musicMeta.musicName") or g("music") or "",
         "music_author": g("musicMeta.musicAuthor") or "",
         "created": g("createTimeISO") or g("created_at") or g("post_date") or ""
     }
+
+def fmt_k(n):
+    """Format int to compact 'k' style (1,234 -> 1.2k)."""
+    try:
+        n = int(n)
+    except Exception:
+        return "0"
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M".rstrip("0").rstrip(".")
+    if n >= 1_000:
+        return f"{n/1_000:.1f}k".rstrip("0").rstrip(".")
+    return str(n)
+
+def nice_date(iso):
+    """Format ISO datetime to YYYY-MM-DD or friendly date."""
+    s = safe_text(iso)
+    if not s:
+        return ""
+    # try parsing common ISO
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    # fallback: return trimmed original
+    return s.split("T")[0] if "T" in s else s
 
 # ---------- emotion model (cached small) ----------
 try:
@@ -174,7 +200,7 @@ def analyze_text_with_model(text, model_pipeline=None, min_confidence=0.55):
 def analyze_text_heuristic(text):
     if not text:
         return {"emotion": "unclear", "sentiment": "unclear", "confidence": 0.0}
-    if re.search(r"\b(win|love|happy|joy|great|awesome|yay|yes|delight|best)\b", text, re.I):
+    if re.search(r"\b(win|love|happy|joy|great|awesome|yay|yes|delight|best|cheer)\b", text, re.I):
         return {"emotion": "happy", "sentiment": "positive", "confidence": 0.65}
     if re.search(r"\b(annoy|panic|stress|forgot|hate|angry|sad|oops|frustrat)\b", text, re.I):
         return {"emotion": "angry", "sentiment": "negative", "confidence": 0.65}
@@ -191,16 +217,14 @@ def extract_hashtags(text):
     text = safe_text(text)
     return re.findall(r"#\w+", text.lower())
 
-def most_used_emoji(texts):
+def top_n_emojis(texts, n=3):
     emoji_pattern = re.compile("[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF\U00002600-\U000027BF]+", flags=re.UNICODE)
     counter = Counter()
     for t in texts:
         t = safe_text(t)
         for em in emoji_pattern.findall(t):
             counter[em] += 1
-    if counter:
-        return counter.most_common(1)[0]
-    return (None, 0)
+    return counter.most_common(n)
 
 @st.cache_data(show_spinner=False)
 def process_records(records, use_model=True, max_items=500):
@@ -214,11 +238,8 @@ def process_records(records, use_model=True, max_items=500):
     for i, raw in enumerate((records or [])[:max_items]):
         item = raw if isinstance(raw, dict) else {}
         r = normalize_item(item)
-
-        # normalize text safely
         txt = safe_text(r.get("text"))
 
-        # use model for first EMOTION_MODEL_MAX rows only to limit resource use
         if use_model and model_pipeline and i < EMOTION_MODEL_MAX:
             analysis = analyze_text_with_model(txt, model_pipeline=model_pipeline, min_confidence=0.55)
         else:
@@ -237,8 +258,8 @@ def process_records(records, use_model=True, max_items=500):
         keyword_counter.update(keywords)
 
         posts.append({
-            "author": r.get("author"),
-            "avatar": r.get("avatar"),
+            "id": r.get("id",""),
+            "user": r.get("user",""),
             "text": txt,
             "sentiment": sentiment,
             "emotion": emotion,
@@ -261,6 +282,18 @@ if not records:
 
 hashtag_counter, sentiment_counts, emotional_barometer, top_keywords, top_posts_data = process_records(records, use_model=True, max_items=500)
 
+# derive totals and emoji
+total_posts = sum(sentiment_counts.values()) or 1
+sentiment_pct = {k: round(v / total_posts * 100, 1) for k, v in sentiment_counts.items()}
+texts = [p.get("text", "") for p in top_posts_data]
+top_emojis = top_n_emojis(texts, n=3)
+
+# prepare top posts by engagement (likes+shares+comments)
+for p in top_posts_data:
+    p["eng"] = (int(p.get("likes") or 0) + int(p.get("shares") or 0) + int(p.get("comments") or 0))
+top_posts_sorted = sorted(top_posts_data, key=lambda x: x.get("eng",0), reverse=True)
+top_3_posts = top_posts_sorted[:3]
+
 # UI
 st.set_page_config(page_title="NZ Christmas Retail Trendspotter", layout="wide")
 st.title("🎄 NZ Christmas Retail Trendspotter")
@@ -269,94 +302,111 @@ st.caption(f"Source: {source_label} — emotion model max {EMOTION_MODEL_MAX} ro
 st.sidebar.title("📅 Date Range")
 _ = st.sidebar.radio("View trends from:", ["Last 24 hours", "Last 7 days"])
 
-# derive totals and emoji
-total_posts = sum(sentiment_counts.values()) or 1
-sentiment_pct = {k: round(v / total_posts * 100, 1) for k, v in sentiment_counts.items()}
-texts = [p.get("text", "") for p in top_posts_data]
-top_emoji, top_emoji_count = most_used_emoji(texts)
+# Emotion summary and Trend Spotter side-by-side
+colL, colR = st.columns([1.2, 1])
+with colL:
+    st.subheader("🔥 Emotion Summary")
+    st.markdown("Synthesis of dominant emotions from the sample. Low-confidence results are labelled 'unclear'.")
+    # show emotion split
+    split_text = " • ".join([f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)" for k, v in sentiment_pct.items()])
+    st.markdown(f"**Emotion split (by post count):**  {split_text}")
+    # top 3 emojis
+    if top_emojis:
+        emo_lines = "  ".join([f"{e} — {c}×" for e, c in top_emojis])
+        st.markdown(f"**Top emojis:** {emo_lines}")
+    else:
+        st.markdown("**Top emojis:** none detected")
+    st.markdown("**Emotional barometer (counts):**")
+    for e, c in emotional_barometer.items():
+        st.markdown(f"- {e.capitalize()}: {c}")
 
-# Vibe Check
-st.subheader("🔥 Vibe Check — Emotion Summary")
-st.markdown("Synthesis of dominant emotions and top themes from the sample of posts. Low-confidence results are labelled 'unclear'.")
+with colR:
+    st.subheader("🧭 Trend Spotter — Top Posts")
+    st.markdown("Highlights: actual top posts by engagement and key themes (not just hashtags).")
+    if top_3_posts:
+        for i, p in enumerate(top_3_posts, start=1):
+            txt_snip = (p.get("text") or "")[:140].replace("\n"," ").strip()
+            st.markdown(f"**Top {i}** — _{fmt_k(p.get('eng',0))} engagements_")
+            st.markdown(f"> {txt_snip}...")
+            # show simple meta: song and date
+            music = safe_text(p.get("music"))
+            date = nice_date(p.get("created",""))
+            meta = []
+            if music:
+                meta.append(f"Song: {music}")
+            if date:
+                meta.append(f"Date: {date}")
+            if meta:
+                st.markdown(" • ".join(meta))
+    else:
+        st.markdown("No top posts found")
 
-def top_themes_from_posts(posts, top_n=6):
-    tokens = []
-    for p in posts:
-        text = safe_text(p.get("text", ""))
-        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
-    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
-    c = Counter(tokens)
-    return [t for t, _ in c.most_common(top_n)]
+    st.markdown("**Top themes (from post text):**")
+    def top_themes_from_posts(posts, top_n=6):
+        tokens = []
+        for p in posts:
+            text = safe_text(p.get("text",""))
+            tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
+        tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
+        c = Counter(tokens)
+        return [t for t, _ in c.most_common(top_n)]
+    top_themes = top_themes_from_posts(top_posts_data, top_n=6)
+    if top_themes:
+        st.markdown(", ".join(top_themes))
+    else:
+        st.markdown("None detected")
 
-top_themes = top_themes_from_posts(top_posts_data, top_n=6)
-
-if top_themes:
-    st.markdown("**Top themes:** " + ", ".join(top_themes))
-else:
-    st.markdown("**Top themes:** none found")
-
-# songs
-songs = Counter()
-for p in top_posts_data:
-    if safe_text(p.get("music")):
-        songs[p["music"]] += 1
-top_songs = [s for s, _ in songs.most_common(5)]
-
-if top_songs:
-    st.markdown("**Frequent songs in posts:** " + ", ".join(top_songs))
-else:
-    st.markdown("**Frequent songs:** none detected")
-
-# sentiment percent split and emoji
-st.markdown("**Emotion split (by post count):**")
-split_text = " • ".join([f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)" for k, v in sentiment_pct.items()])
-st.markdown(split_text)
-
-if top_emoji:
-    st.markdown(f"**Most used emoji:** {top_emoji} — {top_emoji_count} times")
-else:
-    st.markdown("**Most used emoji:** none detected")
-
-# Top posts table (no video embed)
-st.subheader("🎄 Top Posts and Emotion Overview")
-posts_df = pd.DataFrame(top_posts_data)
+# Top posts table (no author displayed)
+st.subheader("🎄 Top Posts Table")
+posts_df = pd.DataFrame(top_posts_sorted)
 if not posts_df.empty:
-    display_cols = ["author", "text", "sentiment", "emotion", "likes", "shares", "plays", "comments", "music", "created"]
-    available = [c for c in display_cols if c in posts_df.columns]
-    st.dataframe(posts_df[available].fillna(""), use_container_width=True)
+    # format numeric columns compactly and created date nicely
+    def format_row_display(r):
+        return {
+            "text": safe_text(r.get("text","")),
+            "likes": fmt_k(r.get("likes",0)),
+            "shares": fmt_k(r.get("shares",0)),
+            "plays": fmt_k(r.get("plays",0)),
+            "comments": fmt_k(r.get("comments",0)),
+            "engagements": fmt_k(r.get("eng",0)),
+            "music": safe_text(r.get("music","")),
+            "created": nice_date(r.get("created",""))
+        }
+    display_rows = [format_row_display(r) for r in top_posts_sorted]
+    display_df = pd.DataFrame(display_rows)
+    st.dataframe(display_df.fillna(""), use_container_width=True)
 else:
     st.info("No posts to display")
 
-# Trend Spotter & Generate Creatives
-st.subheader("🧠 Trend Spotter")
-st.markdown("**New / emergent trends derived from top keywords and hashtags**")
-for t in top_keywords[:6]:
-    st.markdown(f"- {t}")
+# Generate Creatives section (reworded)
+st.subheader("✨ Generate Creatives")
+st.markdown("Generate short social lines based on the Trend Spotter themes and emotion summary above. The generator will use the emotion split, top hashtags, and top songs to craft cheeky, Kiwi-flavoured lines.")
 
-st.markdown("**Emotional barometer (counts):**")
-for e, c in emotional_barometer.items():
-    st.markdown(f"- {e.capitalize()}: {c}")
+def improved_prompt(top_hashtags, emotion_summary, top_songs, top_themes, sentiment_counts):
+    """
+    Construct a concise prompt describing:
+    - overall sentiment/emotion split across TikTok
+    - what is trending (themes)
+    - key songs appearing
+    - top hashtags
+    """
+    return (
+        "You are a creative assistant writing short social lines for New Zealand retailers for the Christmas season.\n\n"
+        f"Overall emotion split: {emotion_summary}\n"
+        f"Dominant themes: {', '.join(top_themes[:6])}\n"
+        f"Frequent songs: {', '.join(top_songs[:5]) or 'none'}\n"
+        f"Top hashtags: {', '.join(top_hashtags[:10])}\n\n"
+        "Produce 3 short, cheeky, emotionally honest, Kiwi-flavoured social lines suitable for organic posts or paid social. Keep each line under 100 characters."
+    )
 
-# Generate Creatives
-st.subheader("✨ Creative Ideas Based on Trends")
-post_summary = "\n".join([f"- \"{(p['text'] or '')[:120].strip()}...\" ({p['sentiment']}, {p['emotion']})" for p in sorted(top_posts_data, key=lambda x: x.get("likes",0)+x.get("shares",0)+x.get("comments",0), reverse=True)[:20]])
-st.markdown("**Using today's top posts for inspiration:**")
-st.markdown(post_summary)
-
-def generate_creatives_groq(topics, sentiment_summary, post_summary):
+def generate_creatives_groq(top_hashtags, emotion_summary, top_songs, top_themes):
     if not groq_client:
         return "Groq API key not configured. Set GROQ_API_KEY env var to enable."
-    prompt = (
-        "You're a creative assistant. Generate 3 short social lines for NZ Christmas retail: cheeky, emotionally honest, and shareable.\n\n"
-        f"Trending hashtags: {topics}\n"
-        f"Emotion summary: {sentiment_summary}\n"
-        f"Top posts:\n{post_summary}\n\n"
-        "Return 3 short lines (one per line)."
-    )
+    prompt = improved_prompt(top_hashtags, emotion_summary, top_songs, top_themes, sentiment_counts)
     try:
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role":"user","content":prompt}]
         )
         return resp.choices[0].message.content
     except Exception as e:
@@ -366,7 +416,7 @@ if "creative_lines" not in st.session_state:
     st.session_state.creative_lines = ""
 
 if st.button("Generate Creatives"):
-    st.session_state.creative_lines = generate_creatives_groq(", ".join(list(hashtag_counter.keys())[:20]) if 'hashtag_counter' in globals() else "", dict(sentiment_counts), post_summary)
+    st.session_state.creative_lines = generate_creatives_groq(list(hashtag_counter.keys()), split_text, top_songs, top_themes)
 
 if st.session_state.creative_lines:
     st.markdown("#### ✨ Generated Lines")
@@ -374,9 +424,9 @@ if st.session_state.creative_lines:
         if line.strip():
             st.markdown(f"✅ {line.strip()}")
 
-# Hashtag wordcloud and top hashtags side-by-side & smaller
+# Hashtag wordcloud & ordered list side-by-side (most-used first)
 st.subheader("🌈 Hashtag Cloud & Top Hashtags")
-col1, col2 = st.columns([1, 1])
+col1, col2 = st.columns([1, 0.8])
 with col1:
     small_freq = dict(Counter(hashtag_counter).most_common(40) if 'hashtag_counter' in globals() else {"empty":1})
     wc = WordCloud(width=400, height=160, max_font_size=40, background_color="white").generate_from_frequencies(small_freq)
@@ -385,8 +435,8 @@ with col1:
     ax.axis("off")
     st.pyplot(fig, use_container_width=True)
 with col2:
-    st.markdown("**Top hashtags**")
-    for tag, cnt in Counter(hashtag_counter).most_common(20) if 'hashtag_counter' in globals() else []:
+    st.markdown("**Top hashtags (ordered)**")
+    for tag, cnt in Counter(hashtag_counter).most_common(30) if 'hashtag_counter' in globals() else []:
         st.markdown(f"- #{tag} — {cnt} mentions")
 
 # Explore by hashtag (compact)
@@ -399,12 +449,13 @@ if selected_tag:
         with st.expander(f"Post {i+1} — {post['sentiment']}, {post['emotion']}"):
             cols = st.columns([1, 5])
             with cols[0]:
-                if post["avatar"]:
+                # we intentionally do not show author; show avatar if present
+                if post.get("avatar"):
                     st.image(post["avatar"], width=72)
             with cols[1]:
                 st.markdown(f"**Text:** {post['text']}")
-                st.markdown(f"**Engagement:** 👍 {post['likes']} | 🔁 {post['shares']} | ▶️ {post['plays']} | 💬 {post['comments']}")
-                if post["music"]:
+                st.markdown(f"**Engagement:** 👍 {fmt_k(post.get('likes',0))} | 🔁 {fmt_k(post.get('shares',0))} | 💬 {fmt_k(post.get('comments',0))}")
+                if post.get("music"):
                     st.markdown(f"**Music:** {post['music']} — {post.get('music_author','')}")
 
 st.markdown("---")
