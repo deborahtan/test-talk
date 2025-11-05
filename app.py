@@ -21,7 +21,7 @@ groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # Google Sheet CSV export (user-provided)
 SHEET_ID = "1nOUyqPniKKoje9JFTGXfjMF5POoKeM79tOCi75jYqtk"
 GID = "690233754"
-CSV_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?gid={GID}&format=csv"
+CSV_EXPORT_URL = f"https://docs.google.com/spreadsheets/d/e/2PACX-1vTH33TC1xTixH8TWGAOUUe3o-UIFX82HMaBv8BlI4KA5UnJxYs50QBitDUwXB_Jkl8M52CdE66s_XDx/pub?gid=690233754&single=true&output=csv"
 
 # Hugging Face model choice (small, emotion classifier)
 HF_EMOTION_MODEL = os.getenv("HF_EMOTION_MODEL", "j-hartmann/emotion-english-distilroberta-base")
