@@ -353,12 +353,16 @@ def clean_output(text):
     text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
     # fix run-together numbers/letters like "285million" -> "285 million"
     text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
-    # collapse multiple spaces into single
+    # collapse multiple whitespace
     text = re.sub(r"\s{2,}", " ", text)
     # drop lines that are only chart placeholders
-    lines = [ln for ln in text.splitlines()
-             if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
+    lines = [
+        ln for ln in text.splitlines()
+        if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")
+    ]
     return "\n".join(lines).strip()
+
+
 
 
 # ------------------------------
