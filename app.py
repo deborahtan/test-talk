@@ -63,7 +63,7 @@ with st.sidebar:
     **How to use**
     - The Trendspotter synthesises top posts across TikTok, Meta, and Instagram and analyses sentiment
     - Click on the Generate creative lines button to see automatically generated ideas based on key trends
-    - The assistant responds with creative copy ideas 
+    - The assistant responds with creative copy ideas
     - Conversation context is remembered
     """)
     st.divider()
@@ -335,9 +335,54 @@ top_posts_sorted = sorted(top_posts_data, key=lambda x: x.get("eng", 0), reverse
 top_3_posts = top_posts_sorted[:3]
 
 # ------------------------------
+# Utility: safe clean_output (fixed SyntaxError)
+# ------------------------------
+def clean_output(text):
+    # remove simple chart placeholders and fix spacing artifacts
+    if not isinstance(text, str):
+        return ""
+    # remove patterns like [Insert Chart 1: ...] and any <Chart: ...> tokens
+    text = re.sub(r"
+
+\[Insert Chart \d+:.*?\]
+
+", "", text, flags=re.DOTALL)
+    text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
+    # fix run-together numbers/letters
+    text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
+    # remove empty chart lines
+    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
+    return "\n".join(lines).strip()
+
+# ------------------------------
+# Scorecard (total posts, christmas mentions, top emojis)
+# ------------------------------
+# count mentions of "christmas" across all texts (case-insensitive)
+mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
+top3_emoji_list = top_emojis  # [(emoji, count), ...]
+
+# place scorecard near top of main content
+st.title("🎄 NZ Christmas Retail Trendspotter")
+st.caption(f"Source: {source_label} — emotion model max {EMOTION_MODEL_MAX} rows")
+
+# main top row: left = empty title, right = scorecards
+col_main, col_score = st.columns([3, 1])
+with col_score:
+    st.metric("Total posts", f"{total_posts}")
+    st.metric("Christmas mentions", f"{mentions_total}")
+    # show top 3 emojis compactly
+    if top3_emoji_list:
+        emoji_line = "  ".join([f"{e} {c}×" for e, c in top3_emoji_list])
+        st.markdown(f"**Top emojis:** {emoji_line}")
+    else:
+        st.markdown("**Top emojis:** none")
+
+st.sidebar.title("📅 Date Range")
+_ = st.sidebar.radio("View trends from:", ["Last 24 hours", "Last 7 days"])
+
+# ------------------------------
 # MAIN CHAT LAYOUT (integrated)
 # ------------------------------
-
 # Share button top-right
 col_title, col_share = st.columns([6, 1])
 with col_title:
@@ -391,9 +436,9 @@ else:
         st.divider()
         st.subheader("💡 Quick Questions")
         for question in [
-        "📊 Generate an emotionally resonant creative line related to Christmas.",
-        "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
-        "📉 Recap what the pain points are for everyone this Christmas."
+            "📊 Generate an emotionally resonant creative line related to Christmas.",
+            "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
+            "📉 Recap what the pain points are for everyone this Christmas."
         ]:
             if st.button(question, use_container_width=True, key=f"sidebar_preset_{question}"):
                 preset_input = question
@@ -427,16 +472,6 @@ if user_input:
                         messages=st.session_state.chat_history
                     )
                     output = response.choices[0].message.content
-                    # simple cleaning
-                    def clean_output(text):
-                        text = re.sub(r'
-
-\[Insert Chart \d+:.*?\]
-
-', '', text, flags=re.DOTALL)
-                        text = re.sub(r'<Chart:.*?>', '', text, flags=re.DOTALL)
-                        text = re.sub(r'(\d)([a-z])', r'\1 \2', text)
-                        return "\n".join([ln for ln in text.split("\n") if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]).strip()
                     cleaned_output = clean_output(output)
                     st.markdown(cleaned_output)
                     # chart
@@ -458,60 +493,51 @@ if user_input:
 # ------------------------------
 # Emotion Summary & Trend Spotter UI
 # ------------------------------
-st.title("🎄 NZ Christmas Retail Trendspotter")
-st.caption(f"Source: {source_label} — emotion model max {EMOTION_MODEL_MAX} rows")
-st.sidebar.title("📅 Date Range")
-_ = st.sidebar.radio("View trends from:", ["Last 24 hours", "Last 7 days"])
+st.subheader("🔥 Emotion Summary")
+split_text = " • ".join([f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)" for k, v in sentiment_pct.items()])
+st.markdown(f"**Emotion split (by post count):**  {split_text}")
+if top_emojis:
+    emo_lines = "  ".join([f"{e} — {c}×" for e, c in top_emojis])
+    st.markdown(f"**Top emojis:** {emo_lines}")
+else:
+    st.markdown("**Top emojis:** none detected")
+st.markdown("**Emotional barometer (counts):**")
+for e, c in emotional_barometer.items():
+    st.markdown(f"- {e.capitalize()}: {c}")
 
-# Emotion summary and trend spotter side-by-side
-colL, colR = st.columns([1.2, 1])
-with colL:
-    st.subheader("🔥 Emotion Summary")
-    split_text = " • ".join([f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)" for k, v in sentiment_pct.items()])
-    st.markdown(f"**Emotion split (by post count):**  {split_text}")
-    if top_emojis:
-        emo_lines = "  ".join([f"{e} — {c}×" for e, c in top_emojis])
-        st.markdown(f"**Top emojis:** {emo_lines}")
-    else:
-        st.markdown("**Top emojis:** none detected")
-    st.markdown("**Emotional barometer (counts):**")
-    for e, c in emotional_barometer.items():
-        st.markdown(f"- {e.capitalize()}: {c}")
+st.subheader("🧭 Trend Spotter — Top Posts")
+st.markdown("Highlights: actual top posts by engagement and key themes.")
+if top_3_posts:
+    for i, p in enumerate(top_3_posts, start=1):
+        txt_snip = (p.get("text") or "")[:140].replace("\n", " ").strip()
+        st.markdown(f"**Top {i}** — _{fmt_k(p.get('eng',0))} engagements_")
+        st.markdown(f"> {txt_snip}...")
+        music = safe_text(p.get("music"))
+        date = nice_date(p.get("created",""))
+        meta = []
+        if music:
+            meta.append(f"Song: {music}")
+        if date:
+            meta.append(f"Date: {date}")
+        if meta:
+            st.markdown(" • ".join(meta))
+else:
+    st.markdown("No top posts found")
 
-with colR:
-    st.subheader("🧭 Trend Spotter — Top Posts")
-    st.markdown("Highlights: actual top posts by engagement and key themes.")
-    if top_3_posts:
-        for i, p in enumerate(top_3_posts, start=1):
-            txt_snip = (p.get("text") or "")[:140].replace("\n", " ").strip()
-            st.markdown(f"**Top {i}** — _{fmt_k(p.get('eng',0))} engagements_")
-            st.markdown(f"> {txt_snip}...")
-            music = safe_text(p.get("music"))
-            date = nice_date(p.get("created",""))
-            meta = []
-            if music:
-                meta.append(f"Song: {music}")
-            if date:
-                meta.append(f"Date: {date}")
-            if meta:
-                st.markdown(" • ".join(meta))
-    else:
-        st.markdown("No top posts found")
-
-    st.markdown("**Top themes (from post text):**")
-    def top_themes_from_posts(posts, top_n=6):
-        tokens = []
-        for p in posts:
-            text = safe_text(p.get("text",""))
-            tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
-        tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
-        c = Counter(tokens)
-        return [t for t, _ in c.most_common(top_n)]
-    top_themes = top_themes_from_posts(top_posts_data, top_n=6)
-    if top_themes:
-        st.markdown(", ".join(top_themes))
-    else:
-        st.markdown("None detected")
+st.markdown("**Top themes (from post text):**")
+def top_themes_from_posts(posts, top_n=6):
+    tokens = []
+    for p in posts:
+        text = safe_text(p.get("text",""))
+        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
+    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
+    c = Counter(tokens)
+    return [t for t, _ in c.most_common(top_n)]
+top_themes = top_themes_from_posts(top_posts_data, top_n=6)
+if top_themes:
+    st.markdown(", ".join(top_themes))
+else:
+    st.markdown("None detected")
 
 # Top posts table (no author column)
 st.subheader("🎄 Top Posts Table")
@@ -533,24 +559,25 @@ if top_posts_sorted:
 else:
     st.info("No posts to display")
 
-# Generate Creatives (safe)
-st.subheader("✨ Generate Creatives")
-st.markdown("Generate short social lines based on the Trend Spotter themes and emotion summary above.")
+# Generate Creatives (AirNZ-specific prompt)
+st.subheader("✨ Generate Creatives for Air New Zealand (AirNZ)")
+st.markdown("Generate short social lines tailored to AirNZ using the trends and emotion summary above.")
 
-def improved_prompt(top_hashtags, emotion_summary, top_songs, top_themes):
+def airnz_prompt(top_hashtags, emotion_summary, top_songs, top_themes):
     return (
-        "You are a creative assistant writing witty, sharp, relatable, short social lines for New Zealanders for the Christmas season.\n\n"
+        "You are a creative assistant writing short travel-focused social lines for Air New Zealand (AirNZ). "
+        "Tone: warm, kiwi, reassuring, locally grounded. Avoid generic marketing clichés. Reference the emotion summary and themes; do NOT invent metrics.\n\n"
         f"Overall emotion split: {emotion_summary}\n"
         f"Dominant themes: {', '.join(top_themes[:6])}\n"
         f"Frequent songs: {', '.join(top_songs[:5]) or 'none'}\n"
         f"Top hashtags: {', '.join(top_hashtags[:10])}\n\n"
-        "Produce 3 short, cheeky, emotionally honest, Kiwi-flavoured social lines suitable for organic posts or paid social. Keep each line under 100 characters."
+        "Produce 3 short, cheeky, emotionally honest, Kiwi-flavoured social lines or captions AirNZ could use for organic posts. Keep each line under 100 characters."
     )
 
-def generate_creatives_groq(top_hashtags, emotion_summary, top_songs, top_themes):
+def generate_creatives_airnz(top_hashtags, emotion_summary, top_songs, top_themes):
     if not client:
         return "Groq API key not configured. Set GROQ_API_KEY env var to enable external generation."
-    prompt = improved_prompt(top_hashtags, emotion_summary, top_songs, top_themes)
+    prompt = airnz_prompt(top_hashtags, emotion_summary, top_songs, top_themes)
     try:
         resp = client.chat.completions.create(
             model=GROQ_MODEL,
@@ -561,18 +588,18 @@ def generate_creatives_groq(top_hashtags, emotion_summary, top_songs, top_themes
         return f"Error: {e}"
 
 _safe_hashtags = list(hashtag_counter.keys()) if isinstance(hashtag_counter, dict) else []
-_safe_top_songs = []  # songs extraction not stored separately here
+_safe_top_songs = top_songs if 'top_songs' in globals() else []
 _safe_top_themes = top_themes if isinstance(top_themes, list) else []
 _safe_emotion_summary = split_text if 'split_text' in locals() else "No emotion summary available"
 
 if "creative_lines" not in st.session_state:
     st.session_state.creative_lines = ""
 
-if st.button("Generate Creatives"):
+if st.button("Generate Creatives (AirNZ)"):
     if not client:
         st.session_state.creative_lines = "Groq API key not configured. Set GROQ_API_KEY env var to enable external generation."
     else:
-        st.session_state.creative_lines = generate_creatives_groq(
+        st.session_state.creative_lines = generate_creatives_airnz(
             top_hashtags=_safe_hashtags,
             emotion_summary=_safe_emotion_summary,
             top_songs=_safe_top_songs,
