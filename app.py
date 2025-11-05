@@ -338,7 +338,10 @@ top_3_posts = top_posts_sorted[:3]
 # Utility: safe clean_output (fixed SyntaxError)
 # ------------------------------
 def clean_output(text):
-    # remove simple chart placeholders and fix spacing artifacts
+    """
+    Remove chart placeholders and spacing artifacts from model output.
+    Safe to call with non-string input.
+    """
     if not isinstance(text, str):
         return ""
     # remove patterns like [Insert Chart 1: ...] and any <Chart: ...> tokens
@@ -348,11 +351,15 @@ def clean_output(text):
 
 ", "", text, flags=re.DOTALL)
     text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
-    # fix run-together numbers/letters
+    # fix run-together numbers/letters like "285million" -> "285 million"
     text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
-    # remove empty chart lines
-    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
+    # collapse multiple spaces into single
+    text = re.sub(r"\s{2,}", " ", text)
+    # drop lines that are only chart placeholders
+    lines = [ln for ln in text.splitlines()
+             if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
     return "\n".join(lines).strip()
+
 
 # ------------------------------
 # Scorecard (total posts, christmas mentions, top emojis)
