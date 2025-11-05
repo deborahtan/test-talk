@@ -347,11 +347,7 @@ top_3_posts = top_posts_sorted[:3]
 def clean_output(text):
     if not isinstance(text, str):
         return ""
-    text = re.sub(r"
-
-\[Insert Chart \d+:.*?\]
-
-", "", text, flags=re.DOTALL)
+    text = re.sub(r"\[Insert Chart \d+:.*?\]", "", text, flags=re.DOTALL)
     text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
     text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
     text = re.sub(r"\s{2,}", " ", text)
