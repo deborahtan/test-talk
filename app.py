@@ -632,14 +632,7 @@ for q in quick_qs:
         st.session_state.rerun_question = q
         st.session_state.chat_history.append({"role": "user", "content": q})
         st.rerun()
-
-st.markdown("### 💬 Chat Input")
-bottom_input = st.text_input("Type your question and press Enter", key="bottom_chat_input")
-if bottom_input:
-    st.session_state.rerun_question = bottom_input
-    st.session_state.chat_history.append({"role": "user", "content": bottom_input})
-    st.rerun()
-
+        
 # Display conversation
 for msg in st.session_state.chat_history:
     role = msg.get("role", "assistant")
