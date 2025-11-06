@@ -426,17 +426,6 @@ SYSTEM_PROMPT = (
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-# Display conversation
-for msg in st.session_state.chat_history:
-    role = msg.get("role", "assistant")
-    content = msg.get("content", "")
-    if role == "assistant":
-        with st.chat_message("assistant"):
-            st.markdown(content)
-    else:
-        with st.chat_message("user"):
-            st.markdown(content)
-
 # preserve preset rerun question logic
 preset_input = None
 if "rerun_question" in st.session_state:
@@ -651,6 +640,16 @@ if bottom_input:
     st.session_state.chat_history.append({"role": "user", "content": bottom_input})
     st.rerun()
 
+# Display conversation
+for msg in st.session_state.chat_history:
+    role = msg.get("role", "assistant")
+    content = msg.get("content", "")
+    if role == "assistant":
+        with st.chat_message("assistant"):
+            st.markdown(content)
+    else:
+        with st.chat_message("user"):
+            st.markdown(content)
 
 # Footer
 st.markdown("---")
