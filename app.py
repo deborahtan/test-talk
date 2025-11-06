@@ -426,11 +426,27 @@ SYSTEM_PROMPT = (
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
+# Display conversation
+for msg in st.session_state.chat_history:
+    role = msg.get("role", "assistant")
+    content = msg.get("content", "")
+    if role == "assistant":
+        with st.chat_message("assistant"):
+            st.markdown(content)
+    else:
+        with st.chat_message("user"):
+            st.markdown(content)
+
 # preserve preset rerun question logic
 preset_input = None
 if "rerun_question" in st.session_state:
     preset_input = st.session_state.rerun_question
     del st.session_state.rerun_question
+
+# Chat input remains available but Quick Questions and system prompt UI moved to bottom expander
+user_input = st.chat_input("Type your question here (or open the 'Assistant prompt & Quick Questions' expander below)")
+if preset_input:
+    user_input = preset_input
 
 if user_input:
     # record in history
@@ -628,21 +644,13 @@ for q in quick_qs:
         st.session_state.chat_history.append({"role": "user", "content": q})
         st.rerun()
 
-# ------------------------------
-# Chat History (moved to bottom)
-# ------------------------------
+st.markdown("### 💬 Chat Input")
+bottom_input = st.text_input("Type your question and press Enter", key="bottom_chat_input")
+if bottom_input:
+    st.session_state.rerun_question = bottom_input
+    st.session_state.chat_history.append({"role": "user", "content": bottom_input})
+    st.rerun()
 
-for msg in st.session_state.chat_history:
-    role = msg.get("role", "assistant")
-    content = msg.get("content", "")
-    if role == "system":
-        continue  # Skip system prompt
-    if role == "assistant":
-        with st.chat_message("assistant"):
-            st.markdown(content)
-    else:
-        with st.chat_message("user"):
-            st.markdown(content)
 
 # Footer
 st.markdown("---")
