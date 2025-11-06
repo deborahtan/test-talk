@@ -3,13 +3,13 @@ enableStaticServing = true
 
 [[theme.fontFaces]]
 family="StabilGrotesk"
-url="app/app/static/StabilGrotesk-Regular.otf"
+url="app/static/StabilGrotesk-Regular.otf"
 style="normal"
 weight=400
 
 [[theme.fontFaces]]
 family="StabilGrotesk"
-url="app/app/static/StabilGrotesk-Bold.otf"
+url="app/static/StabilGrotesk-Bold.otf"
 style="normal"
 weight=700
 
