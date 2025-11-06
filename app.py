@@ -26,6 +26,12 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Space Grotesk', sans-serif !important;
+    }
+    
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {visibility: hidden;}
@@ -343,6 +349,20 @@ def process_records(records, use_model=True, max_items=500):
 
 
 # ------------------------------
+# Utility: clean_output
+# ------------------------------
+def clean_output(text):
+    if not isinstance(text, str):
+        return ""
+    text = re.sub(r"\[Insert Chart \d+:.*?\]", "", text, flags=re.DOTALL)
+    text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
+    text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
+    return "\n".join(lines).strip()
+
+
+# ------------------------------
 # Load data and process
 # ------------------------------
 records, source_label = fetch_sheet_as_records(CSV_EXPORT_URL)
@@ -362,58 +382,8 @@ for p in top_posts_data:
 top_posts_sorted = sorted(top_posts_data, key=lambda x: x.get("eng", 0), reverse=True)
 top_3_posts = top_posts_sorted[:3]
 
-
 # ------------------------------
-# Utility: clean_output (fixed)
-# ------------------------------
-def clean_output(text):
-    if not isinstance(text, str):
-        return ""
-    text = re.sub(r"\[Insert Chart \d+:.*?\]", "", text, flags=re.DOTALL)
-    text = re.sub(r"<Chart:.*?>", "", text, flags=re.DOTALL)
-    text = re.sub(r"(\d)([a-zA-Z])", r"\1 \2", text)
-    text = re.sub(r"\s{2,}", " ", text)
-    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
-    return "\n".join(lines).strip()
-
-
-# ------------------------------
-# Scorecard (total posts, christmas mentions, top emojis)
-# ------------------------------
-mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
-top3_emoji_list = top_emojis  # [(emoji, count), ...]
-
-# Title + source (requested)
-st.markdown("## 🎄 NZ Christmas Retail Trendspotter")
-st.markdown("**Source:** TikTok, Instagram, Meta")
-
-# Scorecards layout (big number + label)
-c1, c2, c3, _ = st.columns([1, 1, 2, 6])
-with c1:
-    st.markdown(
-        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Total posts</div></div>".format(
-            total_posts
-        ),
-        unsafe_allow_html=True,
-    )
-with c2:
-    st.markdown(
-        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Christmas mentions</div></div>".format(
-            mentions_total
-        ),
-        unsafe_allow_html=True,
-    )
-with c3:
-    if top3_emoji_list:
-        emoji_line = " ".join([f"{e} {c}×" for e, c in top3_emoji_list])
-        st.markdown(f"<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> {emoji_line}</div></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> none</div></div>", unsafe_allow_html=True)
-
-# NOTE: date range removed as requested
-
-# ------------------------------
-# Main chat / assistant system prompt (kept in session but moved UI to bottom expander)
+# Main chat / assistant system prompt (kept in session)
 # ------------------------------
 SYSTEM_PROMPT = (
     "You are the Dentsu Conversational Analytics assistant. "
@@ -426,10 +396,202 @@ SYSTEM_PROMPT = (
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-# Display conversation
+# ------------------------------
+# Scorecard (total posts, christmas mentions, top emojis)
+# ------------------------------
+mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
+top3_emoji_list = top_emojis
+
+# Title + source
+st.markdown("## 🎄 NZ Christmas Retail Trendspotter")
+st.markdown("**Source:** TikTok, Instagram, Meta")
+
+# Scorecards layout
+c1, c2, c3, _ = st.columns([1, 1, 2, 6])
+with c1:
+    st.markdown(
+        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Total posts</div></div>".format(total_posts),
+        unsafe_allow_html=True,
+    )
+with c2:
+    st.markdown(
+        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Christmas mentions</div></div>".format(mentions_total),
+        unsafe_allow_html=True,
+    )
+with c3:
+    if top3_emoji_list:
+        emoji_line = " ".join([f"{e} {c}×" for e, c in top3_emoji_list])
+        st.markdown(f"<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> {emoji_line}</div></div>", unsafe_allow_html=True)
+    else:
+        st.markdown("<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> none</div></div>", unsafe_allow_html=True)
+
+# Top themes calculation
+def top_themes_from_posts(posts, top_n=6):
+    tokens = []
+    for p in posts:
+        text = safe_text(p.get("text",""))
+        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
+    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
+    c = Counter(tokens)
+    return [t for t, _ in c.most_common(top_n)]
+
+top_themes = top_themes_from_posts(top_posts_data, top_n=6)
+
+# ------------------------------
+# Emotion Summary (expandable)
+# ------------------------------
+ordered = sorted(sentiment_pct.items(), key=lambda x: (-x[1], x[0]))
+split_parts = []
+for k, v in ordered:
+    split_parts.append(f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)")
+emotion_paragraph = " • ".join(split_parts)
+
+with st.expander("🔥 Emotion Summary (expand)"):
+    st.markdown(f"**Emotion split (by post count):** {emotion_paragraph}")
+    if top_emojis:
+        emoji_lines = " ".join([f"{e} — {c}×" for e, c in top_emojis])
+        st.markdown(f"**Top emojis:** {emoji_lines}")
+    else:
+        st.markdown("**Top emojis:** none detected")
+    st.markdown("**Emotional barometer (counts):**")
+    for e, c in emotional_barometer.items():
+        st.markdown(f"- {e.capitalize()}: {c}")
+
+# ------------------------------
+# Smart Christmas Spirit Summary
+# ------------------------------
+st.subheader("🎄 Christmas Spirit Summary")
+
+def generate_spirit_summary(posts, sentiment_counts, emotional_barometer, top_themes):
+    total = sum(sentiment_counts.values()) or 1
+    pos_pct = sentiment_counts.get("positive", 0) / total * 100
+    neg_pct = sentiment_counts.get("negative", 0) / total * 100
+    dominant_emotion = max(emotional_barometer.items(), key=lambda x: x[1])[0] if emotional_barometer else "unclear"
+    theme_words = ", ".join(top_themes[:4]) if top_themes else "holiday cheer"
+    sentiment_line = f"The overall mood is {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with {dominant_emotion} being the dominant emotion."
+    theme_line = f"Key themes include: {theme_words}. People are expressing a mix of excitement, nostalgia, and the typical holiday hustle."
+    return f"{sentiment_line}\n\n{theme_line}"
+
+spirit_summary = generate_spirit_summary(top_posts_data, sentiment_counts, emotional_barometer, top_themes)
+st.markdown(spirit_summary)
+
+# ------------------------------
+# Top Posts Summary (expandable with links)
+# ------------------------------
+with st.expander("🎄 Top Posts Summary (expand)"):
+    if top_posts_sorted:
+        for r in top_posts_sorted[:50]:
+            eng = fmt_k(r.get("eng",0))
+            txt = (safe_text(r.get("text",""))[:180] + "...") if len(safe_text(r.get("text",""))) > 180 else safe_text(r.get("text",""))
+            date = nice_date(r.get("created",""))
+            post_url = safe_text(r.get("url",""))
+            st.markdown(f"**{eng}** — {txt}")
+            meta = []
+            if r.get("music"):
+                meta.append(f"Song: {safe_text(r.get('music'))}")
+            if date:
+                meta.append(f"Date: {date}")
+            if post_url:
+                meta.append(f"[Link to post]({post_url})")
+            if meta:
+                st.markdown(" • ".join(meta))
+            st.markdown("---")
+    else:
+        st.info("No posts to display")
+
+# ------------------------------
+# Wordcloud & Hashtags (expandable)
+# ------------------------------
+with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
+    sel_tag = st.selectbox("Filter cloud by hashtag (optional)", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
+    if sel_tag:
+        source_posts = [p for p in top_posts_data if f"#{sel_tag}" in (p.get("text","") or "").lower()]
+    else:
+        source_posts = top_posts_data
+
+    small_freq = Counter()
+    for p in source_posts:
+        for tag in extract_hashtags(p.get("text","")):
+            small_freq[tag.lstrip("#")] += 1
+    if not small_freq:
+        small_freq = dict(Counter(hashtag_counter).most_common(40) if isinstance(hashtag_counter, dict) else {"empty":1})
+    else:
+        small_freq = dict(small_freq.most_common(40))
+
+    wc = WordCloud(width=600, height=240, max_font_size=60, background_color="#E6E6E6").generate_from_frequencies(small_freq)
+    fig, ax = plt.subplots(figsize=(6,2.4))
+    ax.imshow(wc, interpolation="bilinear")
+    ax.axis("off")
+    fig.patch.set_visible(False)
+    ax.set_frame_on(False)
+    plt.tight_layout(pad=0)
+    st.pyplot(fig, use_container_width=True)
+
+    st.markdown("**Top hashtags (ordered)**")
+    for tag, cnt in list(small_freq.items())[:50]:
+        st.markdown(f"- #{tag} — {cnt} mentions")
+
+    st.markdown("**Sample posts for this selection**")
+    sample_posts = source_posts[:20]
+    for p in sample_posts:
+        url = safe_text(p.get("url",""))
+        if url:
+            st.markdown(f"- [{fmt_k(p.get('eng',0))} engagements]({url}) — {safe_text(p.get('text',''))[:80]}...")
+        else:
+            st.markdown(f"- {fmt_k(p.get('eng',0))} engagements — {safe_text(p.get('text',''))[:80]}...")
+
+# ------------------------------
+# Explore Posts by Hashtag
+# ------------------------------
+with st.expander("🔍 Explore Posts by Hashtag (expand)"):
+    selected_tag = st.selectbox("Select a hashtag to explore", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
+    if selected_tag:
+        filtered = [p for p in top_posts_data if f"#{selected_tag}" in (p.get("text","") or "").lower()]
+        st.markdown(f"Showing {len(filtered)} posts with #{selected_tag}")
+        for i, post in enumerate(filtered):
+            with st.expander(f"Post {i+1} — {post.get('sentiment')}, {post.get('emotion')}"):
+                cols = st.columns([1, 5])
+                with cols[0]:
+                    if post.get("avatar"):
+                        try:
+                            st.image(post.get("avatar"), width=72)
+                        except Exception:
+                            pass
+                with cols[1]:
+                    st.markdown(f"**Text:** {post.get('text')}")
+                    st.markdown(f"**Engagement:** 👍 {fmt_k(post.get('likes',0))} | 🔁 {fmt_k(post.get('shares',0))} | 💬 {fmt_k(post.get('comments',0))}")
+                    if post.get("music"):
+                        st.markdown(f"**Music:** {post.get('music')} — {post.get('music_author','')}")
+                    if post.get("url"):
+                        st.markdown(f"[Link to post]({safe_text(post.get('url'))})")
+
+# ------------------------------
+# Bottom section: Quick Questions + Chat
+# ------------------------------
+
+st.divider()
+
+st.markdown("### 💡 Quick Questions")
+quick_qs = [
+    "📊 Generate an emotionally resonant creative line related to Christmas.",
+    "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
+    "📉 Recap what the pain points are for everyone this Christmas.",
+]
+for q in quick_qs:
+    if st.button(q, use_container_width=True, key=f"quick_q_{q}"):
+        st.session_state.rerun_question = q
+        st.rerun()
+
+st.divider()
+
+st.markdown("### 💬 Chat")
+
+# Display conversation (exclude system prompt)
 for msg in st.session_state.chat_history:
     role = msg.get("role", "assistant")
     content = msg.get("content", "")
+    if role == "system":
+        continue  # Skip system prompt
     if role == "assistant":
         with st.chat_message("assistant"):
             st.markdown(content)
@@ -443,8 +605,8 @@ if "rerun_question" in st.session_state:
     preset_input = st.session_state.rerun_question
     del st.session_state.rerun_question
 
-# Chat input remains available but Quick Questions and system prompt UI moved to bottom expander
-user_input = st.chat_input("Type your question here (or open the 'Assistant prompt & Quick Questions' expander below)")
+# Chat input
+user_input = st.chat_input("Type your question here")
 if preset_input:
     user_input = preset_input
 
@@ -456,6 +618,7 @@ if user_input:
         {"text": user_input, "date": datetime.now().date(), "timestamp": datetime.now().isoformat()}
     )
     st.session_state.chat_history.append({"role": "user", "content": user_input})
+    
     with st.chat_message("user"):
         st.markdown(user_input)
 
@@ -483,174 +646,6 @@ if user_input:
                     st.warning("⚠️ Too many requests. Please wait a moment and try again.")
                 else:
                     st.error("An error occurred while contacting the model. Check logs for details.")
-
-# ------------------------------
-# Emotion Summary (single paragraph) + Emotional barometer
-# ------------------------------
-ordered = sorted(sentiment_pct.items(), key=lambda x: (-x[1], x[0]))
-split_parts = []
-for k, v in ordered:
-    split_parts.append(f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)")
-emotion_paragraph = " • ".join(split_parts)
-st.subheader("🔥 Emotion Summary")
-st.markdown(f"**Emotion split (by post count):** {emotion_paragraph}")
-if top_emojis:
-    emoji_lines = " ".join([f"{e} — {c}×" for e, c in top_emojis])
-    st.markdown(f"**Top emojis:** {emoji_lines}")
-else:
-    st.markdown("**Top emojis:** none detected")
-st.markdown("**Emotional barometer (counts):**")
-for e, c in emotional_barometer.items():
-    st.markdown(f"- {e.capitalize()}: {c}")
-
-# ------------------------------
-# Trend Spotter — Top Posts
-# ------------------------------
-st.subheader("🧭 Trend Spotter — Top Posts")
-st.markdown("Highlights: actual top posts by engagement and key themes.")
-
-for i, p in enumerate(top_3_posts, start=1):
-    txt_snip = (p.get("text") or "")[:200].replace("\n", " ").strip()
-    st.markdown(f"**Top {i} — {fmt_k(p.get('eng',0))} engagements**")
-    st.markdown(f"{txt_snip}...")
-    music = safe_text(p.get("music"))
-    date = nice_date(p.get("created",""))
-    meta = []
-    if music:
-        meta.append(f"Song: {music}")
-    if date:
-        meta.append(f"Date: {date}")
-    if p.get("url"):
-        st.markdown(f"[Open post]({safe_text(p.get('url'))})")
-    if meta:
-        st.markdown(" • ".join(meta))
-
-# Top themes
-def top_themes_from_posts(posts, top_n=6):
-    tokens = []
-    for p in posts:
-        text = safe_text(p.get("text",""))
-        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
-    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
-    c = Counter(tokens)
-    return [t for t, _ in c.most_common(top_n)]
-
-top_themes = top_themes_from_posts(top_posts_data, top_n=6)
-st.markdown("**Top themes (from post text):**")
-if top_themes:
-    st.markdown(", ".join(top_themes))
-else:
-    st.markdown("None detected")
-
-# ------------------------------
-# Top Posts Summary (expandable with links)
-# ------------------------------
-with st.expander("🎄 Top Posts Summary (expand)"):
-    if top_posts_sorted:
-        for r in top_posts_sorted[:50]:
-            eng = fmt_k(r.get("eng",0))
-            txt = (safe_text(r.get("text",""))[:180] + "...") if len(safe_text(r.get("text",""))) > 180 else safe_text(r.get("text",""))
-            date = nice_date(r.get("created",""))
-            post_url = safe_text(r.get("url",""))
-            st.markdown(f"**{eng}** — {txt}")
-            meta = []
-            if r.get("music"):
-                meta.append(f"Song: {safe_text(r.get('music'))}")
-            if date:
-                meta.append(f"Date: {date}")
-            if meta:
-                st.markdown(" • ".join(meta))
-            if post_url:
-                st.markdown(f"[Open post]({post_url})")
-            st.markdown("---")
-    else:
-        st.info("No posts to display")
-
-# ------------------------------
-# Wordcloud, Explore: expandables; wordcloud bg grey
-# ------------------------------
-with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
-    sel_tag = st.selectbox("Filter cloud by hashtag (optional)", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
-    if sel_tag:
-        source_posts = [p for p in top_posts_data if f"#{sel_tag}" in (p.get("text","") or "").lower()]
-    else:
-        source_posts = top_posts_data
-
-    small_freq = Counter()
-    for p in source_posts:
-        for tag in extract_hashtags(p.get("text","")):
-            small_freq[tag.lstrip("#")] += 1
-    if not small_freq:
-        small_freq = dict(Counter(hashtag_counter).most_common(40) if isinstance(hashtag_counter, dict) else {"empty":1})
-    else:
-        small_freq = dict(small_freq.most_common(40))
-
-    wc = WordCloud(width=800, height=320, max_font_size=80, background_color="#E6E6E6").generate_from_frequencies(small_freq)
-    fig, ax = plt.subplots(figsize=(8,3.2))
-    ax.imshow(wc, interpolation="bilinear")
-    ax.axis("off")
-    st.pyplot(fig, use_container_width=True)
-
-    st.markdown("**Top hashtags (ordered)**")
-    for tag, cnt in list(small_freq.items())[:50]:
-        st.markdown(f"- #{tag} — {cnt} mentions")
-
-    st.markdown("**Sample posts for this selection**")
-    sample_posts = source_posts[:20]
-    for p in sample_posts:
-        url = safe_text(p.get("url",""))
-        if url:
-            st.markdown(f"- [{fmt_k(p.get('eng',0))} engagements]({url}) — {safe_text(p.get('text',''))[:80]}...")
-        else:
-            st.markdown(f"- {fmt_k(p.get('eng',0))} engagements — {safe_text(p.get('text',''))[:80]}...")
-
-with st.expander("🔍 Explore Posts by Hashtag (expand)"):
-    selected_tag = st.selectbox("Select a hashtag to explore", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
-    if selected_tag:
-        filtered = [p for p in top_posts_data if f"#{selected_tag}" in (p.get("text","") or "").lower()]
-        st.markdown(f"Showing {len(filtered)} posts with #{selected_tag}")
-        for i, post in enumerate(filtered):
-            with st.expander(f"Post {i+1} — {post.get('sentiment')}, {post.get('emotion')}"):
-                cols = st.columns([1, 5])
-                with cols[0]:
-                    if post.get("avatar"):
-                        try:
-                            st.image(post.get("avatar"), width=72)
-                        except Exception:
-                            pass
-                with cols[1]:
-                    st.markdown(f"**Text:** {post.get('text')}")
-                    st.markdown(f"**Engagement:** 👍 {fmt_k(post.get('likes',0))} | 🔁 {fmt_k(post.get('shares',0))} | 💬 {fmt_k(post.get('comments',0))}")
-                    if post.get("music"):
-                        st.markdown(f"**Music:** {post.get('music')} — {post.get('music_author','')}")
-                    if post.get("url"):
-                        st.markdown(f"[Open post]({safe_text(post.get('url'))})")
-
-# ------------------------------
-# Bottom expander: System prompt + Quick Questions + Chat input (moved there)
-# ------------------------------
-
-st.divider()
-
-st.markdown("### 💡 Quick Questions")
-quick_qs = [
-    "📊 Generate an emotionally resonant creative line related to Christmas.",
-    "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
-    "📉 Recap what the pain points are for everyone this Christmas.",
-]
-for q in quick_qs:
-    if st.button(q, use_container_width=True, key=f"quick_q_{q}"):
-        st.session_state.rerun_question = q
-        st.session_state.chat_history.append({"role": "user", "content": q})
-        st.rerun()
-
-st.markdown("### 💬 Chat Input")
-bottom_input = st.text_input("Type your question and press Enter", key="bottom_chat_input")
-if bottom_input:
-    st.session_state.rerun_question = bottom_input
-    st.session_state.chat_history.append({"role": "user", "content": bottom_input})
-    st.rerun()
-
 
 # Footer
 st.markdown("---")
