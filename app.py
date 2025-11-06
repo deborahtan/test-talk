@@ -629,32 +629,28 @@ with st.expander("🔍 Explore Posts by Hashtag (expand)"):
 # ------------------------------
 # Bottom expander: System prompt + Quick Questions + Chat input (moved there)
 # ------------------------------
-with st.expander("Assistant prompt & Quick Questions (expand)"):
-    st.markdown(
-        "You are the Dentsu Conversational Analytics assistant. Primary task: craft short, witty, culturally relevant one-liners and captions for the 2025 New Zealand Christmas season aimed at being relatable. Tone: warm, Kiwi, reassuring, lightly cheeky; avoid clichés and hard sell. Always use NZ English spelling. Base creative lines on the provided social dataset; do NOT invent metrics. When asked for analysis, keep answers concise, give one clear executive takeaway, and provide a single recommended creative line as an example. When producing multiple lines, vary voice (friendly, playful, reassuring) and keep each under 100 characters."
-    )
 
-    st.divider()
-    st.markdown("### 💡 Quick Questions")
-    quick_qs = [
-        "📊 Generate an emotionally resonant creative line related to Christmas.",
-        "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
-        "📉 Recap what the pain points are for everyone this Christmas.",
-    ]
-    for q in quick_qs:
-        if st.button(q, use_container_width=True, key=f"bottom_q_{q}"):
-            # inject as if user typed it
-            st.session_state.chat_history.append({"role": "user", "content": q})
-            st.experimental_rerun()
+st.divider()
 
-    st.markdown("---")
-    st.markdown("Chat input (also available at top). Tip: use the Quick Questions above or type your custom prompt in the input at the top or here.")
-    # local inline input (optional duplicate)
-    bottom_input = st.text_input("Or type here and press Enter", key="bottom_chat_input")
-    if bottom_input:
-        st.session_state.chat_history.append({"role": "user", "content": bottom_input})
-        # rerun to show new message and trigger model call via top chat handler
-        st.experimental_rerun()
+st.markdown("### 💡 Quick Questions")
+quick_qs = [
+    "📊 Generate an emotionally resonant creative line related to Christmas.",
+    "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
+    "📉 Recap what the pain points are for everyone this Christmas.",
+]
+for q in quick_qs:
+    if st.button(q, use_container_width=True, key=f"quick_q_{q}"):
+        st.session_state.rerun_question = q
+        st.session_state.chat_history.append({"role": "user", "content": q})
+        st.rerun()
+
+st.markdown("### 💬 Chat Input")
+bottom_input = st.text_input("Type your question and press Enter", key="bottom_chat_input")
+if bottom_input:
+    st.session_state.rerun_question = bottom_input
+    st.session_state.chat_history.append({"role": "user", "content": bottom_input})
+    st.rerun()
+
 
 # Footer
 st.markdown("---")
