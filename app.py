@@ -27,10 +27,21 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    @font-face {
+        font-family: 'StabilGrotesk';
+        src: url('app/static/StabilGrotesk-Regular.otf') format('opentype');
+        font-weight: 400;
+        font-style: normal;
+    }
+    @font-face {
+        font-family: 'StabilGrotesk';
+        src: url('app/static/StabilGrotesk-Bold.otf') format('opentype');
+        font-weight: 700;
+        font-style: normal;
+    }
     
     html, body, [class*="css"] {
-        font-family: 'Space Grotesk', sans-serif !important;
+        font-family: 'StabilGrotesk', sans-serif !important;
     }
     
     #MainMenu {visibility: hidden;}
@@ -106,7 +117,7 @@ with st.sidebar:
 # ------------------------------
 CSV_EXPORT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH33TC1xTixH8TWGAOUUe3o-UIFX82HMaBv8BlI4KA5UnJxYs50QBitDUwXB_Jkl8M52CdE66s_XDx/pub?output=csv"
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_MODEL = "llama-3.1-8b-instant"
 client = None
 if GROQ_API_KEY:
@@ -117,6 +128,7 @@ if GROQ_API_KEY:
 
 HF_EMOTION_MODEL = os.getenv("HF_EMOTION_MODEL", "j-hartmann/emotion-english-distilroberta-base")
 EMOTION_MODEL_MAX = int(os.getenv("EMOTION_MODEL_MAX", "200"))
+
 # ------------------------------
 # Helpers
 # ------------------------------
@@ -227,6 +239,7 @@ def normalize_item(item):
         "created": g("createTimeISO") or g("created_at") or g("post_date") or "",
         "url": safe_text(url),
     }
+
 # ------------------------------
 # Emotion model (cached small)
 # ------------------------------
@@ -379,17 +392,56 @@ for p in top_posts_data:
 top_posts_sorted = sorted(top_posts_data, key=lambda x: x.get("eng", 0), reverse=True)
 top_3_posts = top_posts_sorted[:3]
 
+# Top themes calculation
+def top_themes_from_posts(posts, top_n=6):
+    tokens = []
+    for p in posts:
+        text = safe_text(p.get("text",""))
+        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
+    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
+    c = Counter(tokens)
+    return [t for t, _ in c.most_common(top_n)]
+
+top_themes = top_themes_from_posts(top_posts_data, top_n=6)
+
+# Calculate Christmas mentions
+mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
+
+# Get top songs from posts
+music_counter = Counter()
+for p in top_posts_data:
+    if p.get("music"):
+        music_counter[p.get("music")] += 1
+top_songs = [song for song, _ in music_counter.most_common(5)]
+
 # ------------------------------
-# Main chat / assistant system prompt (kept in session)
+# UPDATED System Prompt with Context
 # ------------------------------
+context_summary = f"""
+CURRENT DATA CONTEXT (refer to this when creating content):
+- Total posts analyzed: {total_posts}
+- Christmas mentions: {mentions_total}
+- Sentiment breakdown: {sentiment_pct.get('positive', 0):.0f}% positive, {sentiment_pct.get('negative', 0):.0f}% negative, {sentiment_pct.get('neutral', 0):.0f}% neutral
+- Top emojis: {', '.join([e for e, _ in top_emojis[:3]])}
+- Top songs trending: {', '.join(top_songs[:3]) if top_songs else 'None'}
+- Key themes: {', '.join(top_themes[:5])}
+- Dominant emotion: {max(emotional_barometer.items(), key=lambda x: x[1])[0] if emotional_barometer else 'unclear'}
+"""
+
 SYSTEM_PROMPT = (
-    "You are the Dentsu Conversational Analytics assistant. "
+    "You are the Dentsu Conversational Analytics assistant for New Zealand Christmas retail trends 2025. "
     "Primary task: craft short, witty, culturally relevant one-liners and captions for the 2025 New Zealand Christmas season aimed at being relatable. "
     "Tone: warm, Kiwi, reassuring, lightly cheeky; avoid clichés and hard sell. Always use NZ English spelling. "
-    "Base creative lines on the provided social dataset; do NOT invent metrics. "
-    "When asked for analysis, keep answers concise, give one clear executive takeaway, and provide a single recommended creative line as an example. "
-    "When producing multiple lines, vary voice (friendly, playful, reassuring) and keep each under 100 characters."
+    "\n\n"
+    f"{context_summary}"
+    "\n\n"
+    "CRITICAL: Always base your creative lines and analysis on the actual data above. Reference specific trends, songs, themes, and sentiment. "
+    "When asked to generate creative lines, tie them directly to what's trending in the data (e.g., if Mariah Carey is trending, reference it; if baking is popular, use it). "
+    "When asked for 5 creative line options, ensure each reflects different aspects of the current trends and moods captured in the data. "
+    "Keep answers concise. When producing multiple lines, vary voice (friendly, playful, reassuring, nostalgic) and keep each under 100 characters. "
+    "Always explain which trend or insight inspired each creative line."
 )
+
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -402,10 +454,9 @@ st.markdown("**Source:** TikTok, Instagram, Meta")
 # ------------------------------
 st.markdown("### 🎅 Key Christmas Mentions")
 
-mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
 top3_emoji_list = top_emojis
 
-# Scorecards layout - UPDATED to be same size and sleeker
+# Scorecards layout
 c1, c2, c3 = st.columns(3)
 with c1:
     st.markdown(
@@ -439,20 +490,8 @@ with c3:
         unsafe_allow_html=True,
     )
 
-# Top themes calculation
-def top_themes_from_posts(posts, top_n=6):
-    tokens = []
-    for p in posts:
-        text = safe_text(p.get("text",""))
-        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
-    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
-    c = Counter(tokens)
-    return [t for t, _ in c.most_common(top_n)]
-
-top_themes = top_themes_from_posts(top_posts_data, top_n=6)
-
 # ------------------------------
-# Emotion Summary (expandable) - UPDATED with bar chart
+# Emotion Summary (expandable) - UPDATED with top emojis
 # ------------------------------
 with st.expander("🔥 Emotion Summary (expand)"):
     # Create bar chart data
@@ -469,6 +508,23 @@ with st.expander("🔥 Emotion Summary (expand)"):
                  color_discrete_map={"Positive": "#4CAF50", "Negative": "#F44336", "Neutral": "#9E9E9E", "Unclear": "#607D8B"})
     fig.update_layout(showlegend=False, height=300)
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Top emojis - sleek display
+    if top_emojis:
+        st.markdown("**Top emojis:**")
+        emoji_cols = st.columns(len(top_emojis))
+        for idx, (emoji, count) in enumerate(top_emojis):
+            with emoji_cols[idx]:
+                st.markdown(
+                    f"""
+                    <div style='text-align:center; padding:15px; border:1px solid #333; border-radius:8px;'>
+                        <div style='font-size:32px; margin-bottom:8px;'>{emoji}</div>
+                        <div style='font-size:18px; font-weight:700;'>{count}</div>
+                        <div style='font-size:12px; color:#888;'>mentions</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
     
     st.markdown("**Emotional barometer (counts):**")
     for e, c in emotional_barometer.items():
@@ -568,9 +624,9 @@ with st.expander("🎄 Top Posts Summary (expand)"):
         st.info("No posts to display")
 
 # ------------------------------
-# Wordcloud & Hashtags (expandable) - UPDATED with sorted dropdown
+# Wordcloud & Hashtags (expandable) - UPDATED with transparent background
 # ------------------------------
-with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
+with st.expander("🌈 Hashtag Cloud (expand)"):
     # Sort hashtags by count and create options with counts
     sorted_hashtags = sorted(dict(hashtag_counter).items(), key=lambda x: x[1], reverse=True) if isinstance(hashtag_counter, dict) else []
     hashtag_options = ["All hashtags"] + [f"#{tag} ({count} posts)" for tag, count in sorted_hashtags]
@@ -598,7 +654,8 @@ with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
     else:
         small_freq = dict(small_freq.most_common(40))
 
-    wc = WordCloud(width=600, height=240, max_font_size=60, background_color="#E6E6E6").generate_from_frequencies(small_freq)
+    # TRANSPARENT BACKGROUND
+    wc = WordCloud(width=600, height=240, max_font_size=60, background_color=None, mode="RGBA").generate_from_frequencies(small_freq)
     fig, ax = plt.subplots(figsize=(6,2.4))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
@@ -606,19 +663,6 @@ with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
     ax.set_frame_on(False)
     plt.tight_layout(pad=0)
     st.pyplot(fig, use_container_width=True)
-
-    st.markdown("**Top hashtags (ordered)**")
-    for tag, cnt in list(small_freq.items())[:50]:
-        st.markdown(f"- #{tag} — {cnt} mentions")
-
-    st.markdown("**Sample posts for this selection**")
-    sample_posts = source_posts[:20]
-    for p in sample_posts:
-        url = safe_text(p.get("url",""))
-        if url:
-            st.markdown(f"- [{fmt_k(p.get('eng',0))} engagements]({url}) — {safe_text(p.get('text',''))[:80]}...")
-        else:
-            st.markdown(f"- {fmt_k(p.get('eng',0))} engagements — {safe_text(p.get('text',''))[:80]}...")
 
 # ------------------------------
 # Explore Posts by Hashtag
@@ -663,7 +707,7 @@ st.divider()
 
 st.markdown("### 💡 Quick Questions")
 quick_qs = [
-    "📊 Generate an emotionally resonant creative line related to Christmas.",
+    "📊 Generate 5 creative line options based on today's trends.",
     "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
     "📉 Recap what the pain points are for everyone this Christmas.",
 ]
