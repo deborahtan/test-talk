@@ -13,6 +13,7 @@ from collections import Counter
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 from datetime import datetime
 from functools import lru_cache
+import plotly.express as px
 
 # ------------------------------
 # Styling (Dentsu)
@@ -116,7 +117,6 @@ if GROQ_API_KEY:
 
 HF_EMOTION_MODEL = os.getenv("HF_EMOTION_MODEL", "j-hartmann/emotion-english-distilroberta-base")
 EMOTION_MODEL_MAX = int(os.getenv("EMOTION_MODEL_MAX", "200"))
-
 # ------------------------------
 # Helpers
 # ------------------------------
@@ -227,8 +227,6 @@ def normalize_item(item):
         "created": g("createTimeISO") or g("created_at") or g("post_date") or "",
         "url": safe_text(url),
     }
-
-
 # ------------------------------
 # Emotion model (cached small)
 # ------------------------------
@@ -361,7 +359,6 @@ def clean_output(text):
     lines = [ln for ln in text.splitlines() if not ln.strip().startswith("<Chart") and not ln.strip().startswith("[Insert Chart")]
     return "\n".join(lines).strip()
 
-
 # ------------------------------
 # Load data and process
 # ------------------------------
@@ -396,34 +393,51 @@ SYSTEM_PROMPT = (
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-# ------------------------------
-# Scorecard (total posts, christmas mentions, top emojis)
-# ------------------------------
-mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
-top3_emoji_list = top_emojis
-
 # Title + source
 st.markdown("## 🎄 NZ Christmas Retail Trendspotter")
 st.markdown("**Source:** TikTok, Instagram, Meta")
 
-# Scorecards layout
-c1, c2, c3, _ = st.columns([1, 1, 2, 6])
+# ------------------------------
+# Key Christmas Mentions Heading + Scorecards
+# ------------------------------
+st.markdown("### 🎅 Key Christmas Mentions")
+
+mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
+top3_emoji_list = top_emojis
+
+# Scorecards layout - UPDATED to be same size and sleeker
+c1, c2, c3 = st.columns(3)
 with c1:
     st.markdown(
-        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Total posts</div></div>".format(total_posts),
+        """
+        <div style='text-align:center; padding:20px; border:1px solid #333; border-radius:8px;'>
+            <div style='font-size:14px; color:#888; margin-bottom:8px;'>Total posts</div>
+            <div style='font-size:36px; font-weight:700;'>{}</div>
+        </div>
+        """.format(total_posts),
         unsafe_allow_html=True,
     )
 with c2:
     st.markdown(
-        "<div class='scorecard-block'><div class='big-num'>{}</div><div class='small-label'>Christmas mentions</div></div>".format(mentions_total),
+        """
+        <div style='text-align:center; padding:20px; border:1px solid #333; border-radius:8px;'>
+            <div style='font-size:14px; color:#888; margin-bottom:8px;'>Christmas mentions</div>
+            <div style='font-size:36px; font-weight:700;'>{}</div>
+        </div>
+        """.format(mentions_total),
         unsafe_allow_html=True,
     )
 with c3:
-    if top3_emoji_list:
-        emoji_line = " ".join([f"{e} {c}×" for e, c in top3_emoji_list])
-        st.markdown(f"<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> {emoji_line}</div></div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='scorecard-block'><div class='scorecard-emoji'><strong>Top emojis:</strong> none</div></div>", unsafe_allow_html=True)
+    emoji_count = sum([c for _, c in top3_emoji_list]) if top3_emoji_list else 0
+    st.markdown(
+        """
+        <div style='text-align:center; padding:20px; border:1px solid #333; border-radius:8px;'>
+            <div style='font-size:14px; color:#888; margin-bottom:8px;'>Christmas emoji mentions</div>
+            <div style='font-size:36px; font-weight:700;'>{}</div>
+        </div>
+        """.format(emoji_count),
+        unsafe_allow_html=True,
+    )
 
 # Top themes calculation
 def top_themes_from_posts(posts, top_n=6):
@@ -438,42 +452,96 @@ def top_themes_from_posts(posts, top_n=6):
 top_themes = top_themes_from_posts(top_posts_data, top_n=6)
 
 # ------------------------------
-# Emotion Summary (expandable)
+# Emotion Summary (expandable) - UPDATED with bar chart
 # ------------------------------
-ordered = sorted(sentiment_pct.items(), key=lambda x: (-x[1], x[0]))
-split_parts = []
-for k, v in ordered:
-    split_parts.append(f"{k.capitalize()}: {v}% ({sentiment_counts[k]} posts)")
-emotion_paragraph = " • ".join(split_parts)
-
 with st.expander("🔥 Emotion Summary (expand)"):
-    st.markdown(f"**Emotion split (by post count):** {emotion_paragraph}")
-    if top_emojis:
-        emoji_lines = " ".join([f"{e} — {c}×" for e, c in top_emojis])
-        st.markdown(f"**Top emojis:** {emoji_lines}")
-    else:
-        st.markdown("**Top emojis:** none detected")
+    # Create bar chart data
+    emotion_df = pd.DataFrame([
+        {"Emotion": k.capitalize(), "Count": v, "Percentage": round(v / total_posts * 100, 1)}
+        for k, v in sentiment_counts.items()
+    ])
+    
+    # Display bar chart
+    fig = px.bar(emotion_df, x="Emotion", y="Count", 
+                 hover_data=["Percentage"],
+                 labels={"Count": "Number of Posts", "Percentage": "Percentage (%)"},
+                 color="Emotion",
+                 color_discrete_map={"Positive": "#4CAF50", "Negative": "#F44336", "Neutral": "#9E9E9E", "Unclear": "#607D8B"})
+    fig.update_layout(showlegend=False, height=300)
+    st.plotly_chart(fig, use_container_width=True)
+    
     st.markdown("**Emotional barometer (counts):**")
     for e, c in emotional_barometer.items():
         st.markdown(f"- {e.capitalize()}: {c}")
 
 # ------------------------------
-# Smart Christmas Spirit Summary
+# Smart Christmas Spirit Summary - UPDATED to use LLM
 # ------------------------------
 st.subheader("🎄 Christmas Spirit Summary")
 
-def generate_spirit_summary(posts, sentiment_counts, emotional_barometer, top_themes):
+def generate_spirit_summary_with_llm(posts, sentiment_counts, emotional_barometer):
+    # Filter Christmas-related posts
+    christmas_posts = [p for p in posts if "christmas" in safe_text(p.get("text", "")).lower()]
+    
+    # Get top 30 posts by engagement for LLM analysis
+    top_christmas_posts = sorted(christmas_posts, key=lambda x: x.get("eng", 0), reverse=True)[:30]
+    
+    # Prepare post texts for LLM
+    post_samples = []
+    for i, p in enumerate(top_christmas_posts[:30], 1):
+        text = safe_text(p.get("text", ""))
+        music = safe_text(p.get("music", ""))
+        eng = p.get("eng", 0)
+        post_samples.append(f"Post {i} ({fmt_k(eng)} engagements): {text[:200]}... [Music: {music}]")
+    
+    posts_text = "\n\n".join(post_samples)
+    
+    # Calculate sentiment stats
     total = sum(sentiment_counts.values()) or 1
     pos_pct = sentiment_counts.get("positive", 0) / total * 100
     neg_pct = sentiment_counts.get("negative", 0) / total * 100
     dominant_emotion = max(emotional_barometer.items(), key=lambda x: x[1])[0] if emotional_barometer else "unclear"
-    theme_words = ", ".join(top_themes[:4]) if top_themes else "holiday cheer"
-    sentiment_line = f"The overall mood is {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with {dominant_emotion} being the dominant emotion."
-    theme_line = f"Key themes include: {theme_words}. People are expressing a mix of excitement, nostalgia, and the typical holiday hustle."
-    return f"{sentiment_line}\n\n{theme_line}"
+    
+    # Create LLM prompt
+    llm_prompt = f"""Based on these top Christmas-related social media posts from New Zealand, write a 3-4 paragraph summary capturing the Christmas spirit. 
 
-spirit_summary = generate_spirit_summary(top_posts_data, sentiment_counts, emotional_barometer, top_themes)
-st.markdown(spirit_summary)
+Sentiment: {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, dominant emotion: {dominant_emotion}
+
+TOP POSTS:
+{posts_text}
+
+Your summary should:
+1. Start with the overall mood/vibe
+2. Call out specific high-performing songs appearing across posts (by name)
+3. Identify key themes like baking, cooking, Mariah Carey, decorating, etc. with specific examples
+4. Share 1-2 direct quotes showing excitement, nostalgia, or holiday hustle
+5. Keep it warm and Kiwi in tone
+6. Be specific and grounded in the actual post content - don't make things up
+
+Write in a conversational, engaging style. Use markdown formatting with **bold** for emphasis."""
+
+    try:
+        if client:
+            # Create a temporary chat for this summary
+            summary_messages = [
+                {"role": "system", "content": "You are a social media analyst specializing in sentiment and trend analysis for New Zealand audiences."},
+                {"role": "user", "content": llm_prompt}
+            ]
+            response = client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=summary_messages,
+                temperature=0.7
+            )
+            return response.choices[0].message.content
+        else:
+            return f"**Overall vibe:** {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with **{dominant_emotion}** leading the charge.\n\nUnable to generate detailed summary - LLM client not available."
+    except Exception as e:
+        st.warning(f"Could not generate LLM summary: {e}")
+        return f"**Overall vibe:** {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with **{dominant_emotion}** leading the charge.\n\nDetailed analysis unavailable."
+
+with st.spinner("Generating Christmas spirit summary..."):
+    spirit_summary = generate_spirit_summary_with_llm(top_posts_data, sentiment_counts, emotional_barometer)
+    st.markdown(spirit_summary)
 
 # ------------------------------
 # Top Posts Summary (expandable with links)
@@ -500,12 +568,24 @@ with st.expander("🎄 Top Posts Summary (expand)"):
         st.info("No posts to display")
 
 # ------------------------------
-# Wordcloud & Hashtags (expandable)
+# Wordcloud & Hashtags (expandable) - UPDATED with sorted dropdown
 # ------------------------------
 with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
-    sel_tag = st.selectbox("Filter cloud by hashtag (optional)", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
+    # Sort hashtags by count and create options with counts
+    sorted_hashtags = sorted(dict(hashtag_counter).items(), key=lambda x: x[1], reverse=True) if isinstance(hashtag_counter, dict) else []
+    hashtag_options = ["All hashtags"] + [f"#{tag} ({count} posts)" for tag, count in sorted_hashtags]
+    
+    sel_tag_display = st.selectbox("Filter cloud by hashtag (optional)", options=hashtag_options)
+    
+    # Extract just the tag name
+    sel_tag = ""
+    if sel_tag_display and sel_tag_display != "All hashtags":
+        sel_tag = sel_tag_display.split(" (")[0].lstrip("#")
+    
     if sel_tag:
         source_posts = [p for p in top_posts_data if f"#{sel_tag}" in (p.get("text","") or "").lower()]
+        total_with_tag = len(source_posts)
+        st.markdown(f"**Showing {total_with_tag} posts with #{sel_tag}**")
     else:
         source_posts = top_posts_data
 
@@ -544,7 +624,17 @@ with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
 # Explore Posts by Hashtag
 # ------------------------------
 with st.expander("🔍 Explore Posts by Hashtag (expand)"):
-    selected_tag = st.selectbox("Select a hashtag to explore", options=[""] + list(dict(hashtag_counter).keys()) if isinstance(hashtag_counter, dict) else [""])
+    # Sort hashtags by count for this dropdown too
+    sorted_hashtags_explore = sorted(dict(hashtag_counter).items(), key=lambda x: x[1], reverse=True) if isinstance(hashtag_counter, dict) else []
+    explore_options = [""] + [f"#{tag} ({count} posts)" for tag, count in sorted_hashtags_explore]
+    
+    selected_tag_display = st.selectbox("Select a hashtag to explore", options=explore_options, key="explore_hashtag")
+    
+    # Extract just the tag name
+    selected_tag = ""
+    if selected_tag_display:
+        selected_tag = selected_tag_display.split(" (")[0].lstrip("#")
+    
     if selected_tag:
         filtered = [p for p in top_posts_data if f"#{selected_tag}" in (p.get("text","") or "").lower()]
         st.markdown(f"Showing {len(filtered)} posts with #{selected_tag}")
@@ -566,7 +656,7 @@ with st.expander("🔍 Explore Posts by Hashtag (expand)"):
                         st.markdown(f"[Link to post]({safe_text(post.get('url'))})")
 
 # ------------------------------
-# Bottom section: Quick Questions + Chat
+# Bottom section: Quick Questions + Chat Display & Input
 # ------------------------------
 
 st.divider()
@@ -645,7 +735,7 @@ if user_input:
                 if "rate_limit" in err or "429" in err:
                     st.warning("⚠️ Too many requests. Please wait a moment and try again.")
                 else:
-                    st.error("An error occurred while contacting the model. Check logs for details.")
+                    st.error(f"An error occurred while contacting the model: {str(e)}")
 
 # Footer
 st.markdown("---")
