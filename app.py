@@ -1132,3 +1132,8 @@ if user_input:
                 if "rate_limit" in err or "429" in err:
                     st.warning("⚠️ Too many requests. Please wait a moment and try again.")
                 else:
+                    st.error(f"An error occurred while contacting the model: {str(e)}")
+
+# Footer
+st.markdown("---")
+st.markdown("Powered by Dentsu")
