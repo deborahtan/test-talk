@@ -159,7 +159,7 @@ with st.sidebar:
 # ------------------------------
 CSV_EXPORT_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTH33TC1xTixH8TWGAOUUe3o-UIFX82HMaBv8BlI4KA5UnJxYs50QBitDUwXB_Jkl8M52CdE66s_XDx/pub?output=csv"
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
 GROQ_MODEL = "llama-3.1-8b-instant"
 client = None
 if GROQ_API_KEY:
