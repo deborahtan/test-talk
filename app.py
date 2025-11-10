@@ -27,10 +27,21 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap');
+    @font-face {
+        font-family: 'StabilGrotesk';
+        src: url('app/static/StabilGrotesk-Regular.otf') format('opentype');
+        font-weight: 400;
+        font-style: normal;
+    }
+    @font-face {
+        font-family: 'StabilGrotesk';
+        src: url('app/static/StabilGrotesk-Bold.otf') format('opentype');
+        font-weight: 700;
+        font-style: normal;
+    }
     
     html, body, [class*="css"] {
-        font-family: 'Space Grotesk', sans-serif !important;
+        font-family: 'StabilGrotesk', sans-serif !important;
     }
     
     #MainMenu {visibility: hidden;}
@@ -54,6 +65,16 @@ st.markdown(
         transform: translateY(-2px);
     }
 
+    /* Multi-line button support for sidebar */
+    .stSidebar button {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        height: auto !important;
+        min-height: 2.5rem !important;
+        padding: 0.5rem 1rem !important;
+        text-align: left !important;
+    }
+
     .big-num { font-size: 40px; font-weight:700; margin-bottom:2px; text-align:center; }
     .small-label { font-size:12px; color:#666; text-align:center; margin-top:0; }
     .scorecard-block { padding:8px 4px; }
@@ -73,13 +94,45 @@ with st.sidebar:
         st.session_state.question_history = []
         st.rerun()
     st.header("Dentsu Conversational Analytics: Trendspotter")
+    
     st.markdown(
         """
-    **How to use**
-    - Synthesises top posts across TikTok, Instagram and Meta and analyses sentiment
-    - Conversation context is remembered
+    **About the Tool**
+    
+    🎯 Get instant NZ Christmas insights from real social posts
+    
+    📊 Data-driven creative lines based on actual sentiment & trends  
+    
+    🎄 Understand what Kiwis are really feeling this festive season
+    
+    💡 Make confident campaign decisions backed by social data
     """
     )
+    
+    st.divider()
+    
+    st.markdown(
+        """
+    **How to Use**
+    
+    1️⃣ **Key Mentions** - View total posts and Christmas engagement at a glance
+    
+    2️⃣ **Christmas Spirit Summary** - AI-generated narrative of the festive mood
+    
+    3️⃣ **Emotion Summary** - Expand to see sentiment breakdown and top emojis
+    
+    4️⃣ **Top Posts** - Expand to browse highest-engagement content with links
+    
+    5️⃣ **Hashtag Cloud** - Expand to filter and explore trending hashtags
+    
+    6️⃣ **Explore by Hashtag** - Expand to dive deep into specific hashtag posts
+    
+    7️⃣ **Quick Questions** - Click preset prompts for instant insights
+    
+    8️⃣ **Chat** - Ask anything naturally - context is remembered across questions
+    """
+    )
+    
     st.divider()
     st.subheader("📋 Recent Questions")
     if "question_history" not in st.session_state:
@@ -91,13 +144,13 @@ with st.sidebar:
     if today_qs:
         st.markdown("**Today**")
         for q in reversed(today_qs[-5:]):
-            if st.button(q["text"][:50] + ("..." if len(q["text"]) > 50 else ""), key=f"today_{q['timestamp']}", use_container_width=True):
+            if st.button(q["text"], key=f"today_{q['timestamp']}", use_container_width=True):
                 st.session_state.rerun_question = q["text"]
                 st.rerun()
     if yesterday_qs:
         st.markdown("**Yesterday**")
         for q in reversed(yesterday_qs[-5:]):
-            if st.button(q["text"][:50] + ("..." if len(q["text"]) > 50 else ""), key=f"yesterday_{q['timestamp']}", use_container_width=True):
+            if st.button(q["text"], key=f"yesterday_{q['timestamp']}", use_container_width=True):
                 st.session_state.rerun_question = q["text"]
                 st.rerun()
 
@@ -117,6 +170,7 @@ if GROQ_API_KEY:
 
 HF_EMOTION_MODEL = os.getenv("HF_EMOTION_MODEL", "j-hartmann/emotion-english-distilroberta-base")
 EMOTION_MODEL_MAX = int(os.getenv("EMOTION_MODEL_MAX", "200"))
+
 # ------------------------------
 # Helpers
 # ------------------------------
@@ -227,6 +281,7 @@ def normalize_item(item):
         "created": g("createTimeISO") or g("created_at") or g("post_date") or "",
         "url": safe_text(url),
     }
+
 # ------------------------------
 # Emotion model (cached small)
 # ------------------------------
@@ -379,19 +434,110 @@ for p in top_posts_data:
 top_posts_sorted = sorted(top_posts_data, key=lambda x: x.get("eng", 0), reverse=True)
 top_3_posts = top_posts_sorted[:3]
 
+# Top themes calculation
+def top_themes_from_posts(posts, top_n=6):
+    tokens = []
+    for p in posts:
+        text = safe_text(p.get("text",""))
+        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
+    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
+    c = Counter(tokens)
+    return [t for t, _ in c.most_common(top_n)]
+
+top_themes = top_themes_from_posts(top_posts_data, top_n=6)
+
+# Calculate Christmas mentions
+mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
+
+# Get top songs from posts
+music_counter = Counter()
+for p in top_posts_data:
+    if p.get("music"):
+        music_counter[p.get("music")] += 1
+top_songs = [song for song, _ in music_counter.most_common(5)]
+
 # ------------------------------
-# Main chat / assistant system prompt (kept in session)
+# UPDATED System Prompt with Context
 # ------------------------------
+context_summary = f"""
+CURRENT DATA CONTEXT (refer to this when creating content):
+- Total posts analyzed: {total_posts}
+- Christmas mentions: {mentions_total}
+- Sentiment breakdown: {sentiment_pct.get('positive', 0):.0f}% positive, {sentiment_pct.get('negative', 0):.0f}% negative, {sentiment_pct.get('neutral', 0):.0f}% neutral
+- Top emojis: {', '.join([e for e, _ in top_emojis[:3]])}
+- Top songs trending: {', '.join(top_songs[:3]) if top_songs else 'None'}
+- Key themes: {', '.join(top_themes[:5])}
+- Dominant emotion: {max(emotional_barometer.items(), key=lambda x: x[1])[0] if emotional_barometer else 'unclear'}
+"""
+
 SYSTEM_PROMPT = (
-    "You are the Dentsu Conversational Analytics assistant. "
-    "Primary task: craft short, witty, culturally relevant one-liners and captions for the 2025 New Zealand Christmas season aimed at being relatable. "
-    "Tone: warm, Kiwi, reassuring, lightly cheeky; avoid clichés and hard sell. Always use NZ English spelling. "
-    "Base creative lines on the provided social dataset; do NOT invent metrics. "
-    "When asked for analysis, keep answers concise, give one clear executive takeaway, and provide a single recommended creative line as an example. "
-    "When producing multiple lines, vary voice (friendly, playful, reassuring) and keep each under 100 characters."
+    "You are a NZ Christmas 2025 social media copywriter. You have a funny, relatable tone for every kiwi. You MUST ONLY discuss Christmas 2025 in New Zealand using the data below.\n\n"
+    f"{context_summary}"
+    "\n\n"
+    "🚨 ABSOLUTE RULES - NO EXCEPTIONS:\n\n"
+    "1. If asked for creative lines, generate ONLY Christmas-themed lines based on the social data trends above:\n"
+    "   - Shopping queues/crowds ('Queue goals at The Warehouse')\n"
+    "   - Mariah Carey/Christmas music (if in data)\n"
+    "   - Baking/pavlova stress\n"
+    "   - Decorating the tree\n"
+    "   - Secret Santa/gift giving\n"
+    "   - Events like christmas parties\n"
+    "   - Christmas traffic/parking\n\n"
+    "2. NEVER generate lines about:\n"
+    "   - 'Elevate your vibe'\n"
+    "   - 'Unlock your potential'\n"
+    "   - 'Technology meets humanity'\n"
+    "   - Wellness/self-care (unless Christmas shopping stress)\n"
+    "   - Generic business/tech content\n"
+    "   - Mental health (unless Christmas-specific stress)\n\n"
+    "3. FORMAT for creative lines (CRITICAL):\n"
+    "   Present each line as:\n"
+    "   1. 'Clean creative line here 🎄'\n"
+    f"   Inspired by: [specific data point - e.g., 'Mariah Carey trending in posts', '{sentiment_pct.get('negative', 0):.0f}% posts showing queue stress', 'Christmas tree emoji appearing in {mentions_total} posts']\n\n"
+    "   DO NOT put data references IN the creative line itself. Keep the line clean and usable.\n\n"
+    "4. Each creative line must:\n"
+    "   - Be Christmas-specific and relatable to Kiwi Christmas experiences\n"
+    "   - Under 80 characters (the line only, not including inspiration)\n"
+    "   - Use emojis where appropriate\n"
+    "   - Be ready to use in actual marketing/social content\n"
+    "   - Vary tone: cheeky, relatable, nostalgic, sassy, reassuring\n\n"
+    "5. EXAMPLE CORRECT FORMAT:\n"
+    "   1. 'Sleigh all day in the Sylvia Park queues 🎄'\n"
+    f"   Inspired by: Shopping queue stress appearing in {sentiment_pct.get('negative', 0):.0f}% of posts\n\n"
+    "   2. 'Mariah's on repeat and we're not mad about it 🎅'\n"
+    "   Inspired by: All I Want for Christmas Is You trending across posts\n\n"
+    "   3. 'Pavlova: nailed it or failed it? 😅'\n"
+    f"   Inspired by: Baking themes and {sentiment_pct.get('negative', 0):.0f}% posts showing festive pressure\n\n"
+    "   4. 'Deck the tree like a pro or stress out trying 🎄'\n"
+    "   Inspired by: Christmas tree emojis and decorating posts trending\n\n"
+    "   5. 'Secret Santa sorted. Sanity? TBD. 😂'\n"
+    "   Inspired by: Gift-giving themes across posts\n\n"
+    "6. EXAMPLE WRONG FORMAT (NEVER DO THIS):\n"
+    "   ❌ 'Sleigh all day (inspired by 30% negative sentiment)' - NO data in the line!\n"
+    "   ❌ 'Queue goals - data shows stress' - NO data in the line!\n"
+    "   ❌ 'Elevate your vibe' - NOT CHRISTMAS\n"
+    "   Keep the creative line CLEAN. Put inspiration explanation on separate line.\n\n"
+    "7. If asked about pain points, discuss ONLY:\n"
+    "   - Christmas shopping stress (cite data)\n"
+    "   - Gift budget pressure\n"
+    "   - Queue fatigue\n"
+    "   - Decorating stress\n"
+    "   - Family gathering logistics\n"
+    "   - Boxing Day sales planning\n\n"
+    "8. If asked about anything non-Christmas, respond:\n"
+    "   'I only analyse NZ Christmas 2025 trends. Ask me about Christmas shopping, decorating, or festive vibes!'\n\n"
+    "Use NZ English. Be cheeky, sassy, but relatable. Creative lines should be campaign-ready with inspiration shown separately."
 )
+
+# Initialize or update chat history with current system prompt
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [{"role": "system", "content": SYSTEM_PROMPT}]
+else:
+    # Always update the system prompt to ensure latest version is used
+    if len(st.session_state.chat_history) > 0 and st.session_state.chat_history[0].get("role") == "system":
+        st.session_state.chat_history[0]["content"] = SYSTEM_PROMPT
+    else:
+        st.session_state.chat_history.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
 
 # Title + source
 st.markdown("## 🎄 NZ Christmas Retail Trendspotter")
@@ -402,10 +548,9 @@ st.markdown("**Source:** TikTok, Instagram, Meta")
 # ------------------------------
 st.markdown("### 🎅 Key Christmas Mentions")
 
-mentions_total = sum(len(re.findall(r"\bchristmas\b", safe_text(t), flags=re.I)) for t in texts)
 top3_emoji_list = top_emojis
 
-# Scorecards layout - UPDATED to be same size and sleeker
+# Scorecards layout
 c1, c2, c3 = st.columns(3)
 with c1:
     st.markdown(
@@ -439,47 +584,69 @@ with c3:
         unsafe_allow_html=True,
     )
 
-# Top themes calculation
-def top_themes_from_posts(posts, top_n=6):
-    tokens = []
-    for p in posts:
-        text = safe_text(p.get("text",""))
-        tokens += re.findall(r"\b[a-zA-Z]{4,}\b", text.lower())
-    tokens = [t for t in tokens if t not in ENGLISH_STOP_WORDS]
-    c = Counter(tokens)
-    return [t for t, _ in c.most_common(top_n)]
-
-top_themes = top_themes_from_posts(top_posts_data, top_n=6)
-
 # ------------------------------
-# Emotion Summary (expandable) - UPDATED with bar chart
+# Emotion Summary (expandable) - UPDATED with top emojis
 # ------------------------------
 with st.expander("🔥 Emotion Summary (expand)"):
-    # Create bar chart data
-    emotion_df = pd.DataFrame([
-        {"Emotion": k.capitalize(), "Count": v, "Percentage": round(v / total_posts * 100, 1)}
+    # Create sentiment bar chart data
+    sentiment_df = pd.DataFrame([
+        {"Sentiment": k.capitalize(), "Count": v, "Percentage": round(v / total_posts * 100, 1)}
         for k, v in sentiment_counts.items()
     ])
     
-    # Display bar chart
-    fig = px.bar(emotion_df, x="Emotion", y="Count", 
+    st.markdown("**Sentiment Breakdown:**")
+    # Display sentiment bar chart
+    fig_sentiment = px.bar(sentiment_df, x="Sentiment", y="Count", 
                  hover_data=["Percentage"],
                  labels={"Count": "Number of Posts", "Percentage": "Percentage (%)"},
-                 color="Emotion",
+                 color="Sentiment",
                  color_discrete_map={"Positive": "#4CAF50", "Negative": "#F44336", "Neutral": "#9E9E9E", "Unclear": "#607D8B"})
-    fig.update_layout(showlegend=False, height=300)
-    st.plotly_chart(fig, use_container_width=True)
+    fig_sentiment.update_layout(showlegend=False, height=300)
+    st.plotly_chart(fig_sentiment, use_container_width=True)
     
-    st.markdown("**Emotional barometer (counts):**")
-    for e, c in emotional_barometer.items():
-        st.markdown(f"- {e.capitalize()}: {c}")
+    # Create emotional barometer bar chart
+    emotion_df = pd.DataFrame([
+        {"Emotion": k.capitalize(), "Count": v}
+        for k, v in emotional_barometer.items()
+    ])
+    
+    st.markdown("**Emotional Barometer:**")
+    # Display emotional barometer bar chart
+    fig_emotion = px.bar(emotion_df, x="Emotion", y="Count",
+                 labels={"Count": "Number of Posts"},
+                 color="Emotion",
+                 color_discrete_sequence=px.colors.qualitative.Set3)
+    fig_emotion.update_layout(showlegend=False, height=300)
+    st.plotly_chart(fig_emotion, use_container_width=True)
+    
+    # Top emojis - sleek display
+    if top_emojis:
+        st.markdown("**Top Emojis:**")
+        emoji_cols = st.columns(len(top_emojis))
+        for idx, (emoji, count) in enumerate(top_emojis):
+            with emoji_cols[idx]:
+                st.markdown(
+                    f"""
+                    <div style='text-align:center; padding:15px; border:1px solid #333; border-radius:8px;'>
+                        <div style='font-size:32px; margin-bottom:8px;'>{emoji}</div>
+                        <div style='font-size:18px; font-weight:700;'>{count}</div>
+                        <div style='font-size:12px; color:#888;'>mentions</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 # ------------------------------
 # Smart Christmas Spirit Summary - UPDATED to use LLM
 # ------------------------------
 st.subheader("🎄 Christmas Spirit Summary")
 
-def generate_spirit_summary_with_llm(posts, sentiment_counts, emotional_barometer):
+@st.cache_data(show_spinner=False)
+def generate_spirit_summary_with_llm(posts_json, sentiment_dict, emotional_dict):
+    # Convert JSON string back to list of dicts
+    import json
+    posts = json.loads(posts_json)
+    
     # Filter Christmas-related posts
     christmas_posts = [p for p in posts if "christmas" in safe_text(p.get("text", "")).lower()]
     
@@ -496,29 +663,30 @@ def generate_spirit_summary_with_llm(posts, sentiment_counts, emotional_baromete
     
     posts_text = "\n\n".join(post_samples)
     
-    # Calculate sentiment stats
-    total = sum(sentiment_counts.values()) or 1
-    pos_pct = sentiment_counts.get("positive", 0) / total * 100
-    neg_pct = sentiment_counts.get("negative", 0) / total * 100
-    dominant_emotion = max(emotional_barometer.items(), key=lambda x: x[1])[0] if emotional_barometer else "unclear"
+    # Calculate sentiment stats - sentiment_dict and emotional_dict are plain dicts now
+    total = sum(sentiment_dict.values()) or 1
+    pos_pct = sentiment_dict.get("positive", 0) / total * 100
+    neg_pct = sentiment_dict.get("negative", 0) / total * 100
+    dominant_emotion = max(emotional_dict.items(), key=lambda x: x[1])[0] if emotional_dict else "unclear"
     
     # Create LLM prompt
-    llm_prompt = f"""Based on these top Christmas-related social media posts from New Zealand, write a 3-4 paragraph summary capturing the Christmas spirit. 
+    llm_prompt = f"""Write a 3-4 paragraph summary of what's trending in NZ Christmas 2025 social media.
 
-Sentiment: {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, dominant emotion: {dominant_emotion}
+Data shows: {pos_pct:.0f}% positive vibes, {neg_pct:.0f}% showing stress/chaos, dominant emotion: {dominant_emotion}
 
 TOP POSTS:
 {posts_text}
 
-Your summary should:
-1. Start with the overall mood/vibe
-2. Call out specific high-performing songs appearing across posts (by name)
-3. Identify key themes like baking, cooking, Mariah Carey, decorating, etc. with specific examples
-4. Share 1-2 direct quotes showing excitement, nostalgia, or holiday hustle
-5. Keep it warm and Kiwi in tone
-6. Be specific and grounded in the actual post content - don't make things up
+Structure:
+- Paragraph 1: What's the overall Christmas vibe in NZ? Cite 1-2 specific posts with engagement numbers
+- Paragraph 2: What are people excited about? (songs, traditions, activities) - cite specific examples
+- Paragraph 3: What's stressing them out? (queues, budgets, logistics) - cite specific examples  
+- Paragraph 4: Key themes appearing across posts (baking, decorating, music, shopping)
 
-Write in a conversational, engaging style. Use markdown formatting with **bold** for emphasis."""
+Tone: Cheeky Kiwi mate giving the lowdown - "here's what's happening", "Kiwis are vibing on"
+DO NOT use the word "sentiment" - just talk about what people are posting about
+Cite actual post quotes and engagement numbers
+Use **bold** for emphasis"""
 
     try:
         if client:
@@ -536,11 +704,17 @@ Write in a conversational, engaging style. Use markdown formatting with **bold**
         else:
             return f"**Overall vibe:** {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with **{dominant_emotion}** leading the charge.\n\nUnable to generate detailed summary - LLM client not available."
     except Exception as e:
-        st.warning(f"Could not generate LLM summary: {e}")
-        return f"**Overall vibe:** {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with **{dominant_emotion}** leading the charge.\n\nDetailed analysis unavailable."
+        return f"**Overall vibe:** {pos_pct:.0f}% positive, {neg_pct:.0f}% negative, with **{dominant_emotion}** leading the charge.\n\nDetailed analysis unavailable. Error: {str(e)}"
+
+# Convert data to proper formats for caching
+import json
+posts_json = json.dumps(top_posts_data)
+# Explicitly convert Counter objects to regular dicts
+sentiment_dict = {k: v for k, v in sentiment_counts.items()}
+emotional_dict = {k: v for k, v in emotional_barometer.items()}
 
 with st.spinner("Generating Christmas spirit summary..."):
-    spirit_summary = generate_spirit_summary_with_llm(top_posts_data, sentiment_counts, emotional_barometer)
+    spirit_summary = generate_spirit_summary_with_llm(posts_json, sentiment_dict, emotional_dict)
     st.markdown(spirit_summary)
 
 # ------------------------------
@@ -568,9 +742,9 @@ with st.expander("🎄 Top Posts Summary (expand)"):
         st.info("No posts to display")
 
 # ------------------------------
-# Wordcloud & Hashtags (expandable) - UPDATED with sorted dropdown
+# Wordcloud & Hashtags (expandable) - UPDATED with transparent background
 # ------------------------------
-with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
+with st.expander("🌈 Hashtag Cloud (expand)"):
     # Sort hashtags by count and create options with counts
     sorted_hashtags = sorted(dict(hashtag_counter).items(), key=lambda x: x[1], reverse=True) if isinstance(hashtag_counter, dict) else []
     hashtag_options = ["All hashtags"] + [f"#{tag} ({count} posts)" for tag, count in sorted_hashtags]
@@ -598,7 +772,8 @@ with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
     else:
         small_freq = dict(small_freq.most_common(40))
 
-    wc = WordCloud(width=600, height=240, max_font_size=60, background_color="#E6E6E6").generate_from_frequencies(small_freq)
+    # TRANSPARENT BACKGROUND
+    wc = WordCloud(width=600, height=240, max_font_size=60, background_color=None, mode="RGBA").generate_from_frequencies(small_freq)
     fig, ax = plt.subplots(figsize=(6,2.4))
     ax.imshow(wc, interpolation="bilinear")
     ax.axis("off")
@@ -606,19 +781,6 @@ with st.expander("🌈 Hashtag Cloud & Top Hashtags (expand)"):
     ax.set_frame_on(False)
     plt.tight_layout(pad=0)
     st.pyplot(fig, use_container_width=True)
-
-    st.markdown("**Top hashtags (ordered)**")
-    for tag, cnt in list(small_freq.items())[:50]:
-        st.markdown(f"- #{tag} — {cnt} mentions")
-
-    st.markdown("**Sample posts for this selection**")
-    sample_posts = source_posts[:20]
-    for p in sample_posts:
-        url = safe_text(p.get("url",""))
-        if url:
-            st.markdown(f"- [{fmt_k(p.get('eng',0))} engagements]({url}) — {safe_text(p.get('text',''))[:80]}...")
-        else:
-            st.markdown(f"- {fmt_k(p.get('eng',0))} engagements — {safe_text(p.get('text',''))[:80]}...")
 
 # ------------------------------
 # Explore Posts by Hashtag
@@ -663,7 +825,7 @@ st.divider()
 
 st.markdown("### 💡 Quick Questions")
 quick_qs = [
-    "📊 Generate an emotionally resonant creative line related to Christmas.",
+    "📊 Generate 5 creative line options based on today's trends.",
     "🎯 Give me a detailed summary of what people are experiencing this Christmas.",
     "📉 Recap what the pain points are for everyone this Christmas.",
 ]
@@ -684,7 +846,59 @@ for msg in st.session_state.chat_history:
         continue  # Skip system prompt
     if role == "assistant":
         with st.chat_message("assistant"):
-            st.markdown(content)
+            # Format numbered lists as styled elements
+            def format_response(text):
+                lines = text.split('\n')
+                formatted_lines = []
+                in_numbered_list = False
+                list_items = []
+                
+                for line in lines:
+                    # Check if line starts with a number followed by period or parenthesis
+                    if re.match(r'^\d+[\.)]\s+', line.strip()):
+                        in_numbered_list = True
+                        # Extract the number and content
+                        match = re.match(r'^(\d+)[\.)]\s+(.+)$', line.strip())
+                        if match:
+                            num, content_text = match.groups()
+                            list_items.append((num, content_text))
+                    elif in_numbered_list and line.strip() == '':
+                        # Empty line might indicate end of list
+                        continue
+                    elif in_numbered_list and not re.match(r'^\d+[\.)]\s+', line.strip()):
+                        # List ended, render collected items
+                        if list_items:
+                            for num, content_text in list_items:
+                                formatted_lines.append(
+                                    f"""<div style='padding: 12px 16px; margin: 8px 0; border-left: 3px solid #4CAF50; background-color: #1E1E1E; border-radius: 4px;'>
+                                    <span style='font-weight: 700; color: #4CAF50; font-size: 18px; margin-right: 12px;'>{num}.</span>
+                                    <span style='font-size: 14px;'>{content_text}</span>
+                                    </div>"""
+                                )
+                            list_items = []
+                            in_numbered_list = False
+                        formatted_lines.append(line)
+                    else:
+                        formatted_lines.append(line)
+                
+                # Handle case where list is at the end
+                if list_items:
+                    for num, content_text in list_items:
+                        formatted_lines.append(
+                            f"""<div style='padding: 12px 16px; margin: 8px 0; border-left: 3px solid #4CAF50; background-color: #1E1E1E; border-radius: 4px;'>
+                            <span style='font-weight: 700; color: #4CAF50; font-size: 18px; margin-right: 12px;'>{num}.</span>
+                            <span style='font-size: 14px;'>{content_text}</span>
+                            </div>"""
+                        )
+                
+                return '\n'.join(formatted_lines)
+            
+            # Check if response has numbered list
+            if re.search(r'^\d+[\.)]\s+', content, re.MULTILINE):
+                formatted_output = format_response(content)
+                st.markdown(formatted_output, unsafe_allow_html=True)
+            else:
+                st.markdown(content)
     else:
         with st.chat_message("user"):
             st.markdown(content)
@@ -721,7 +935,75 @@ if user_input:
                     response = client.chat.completions.create(model=GROQ_MODEL, messages=st.session_state.chat_history)
                     output = response.choices[0].message.content
                     cleaned_output = clean_output(output)
-                    st.markdown(cleaned_output)
+                    
+                    # Format numbered lists as individual styled elements
+                    def format_response(text):
+                        # Check if response contains numbered list (1. 2. 3. etc)
+                        lines = text.split('\n')
+                        formatted_parts = []
+                        current_text = []
+                        in_numbered_list = False
+                        
+                        i = 0
+                        while i < len(lines):
+                            line = lines[i]
+                            stripped = line.strip()
+                            
+                            # Check if line starts with a number followed by period or parenthesis
+                            if re.match(r'^\d+[\.)]\s+', stripped):
+                                # If we have accumulated text before the list, add it
+                                if current_text:
+                                    formatted_parts.append('\n'.join(current_text))
+                                    current_text = []
+                                
+                                in_numbered_list = True
+                                # Extract the number and content
+                                match = re.match(r'^(\d+)[\.)]\s+(.+)$', stripped)
+                                if match:
+                                    num, content = match.groups()
+                                    
+                                    # Check if next lines are continuation (don't start with number)
+                                    full_content = content
+                                    j = i + 1
+                                    while j < len(lines):
+                                        next_line = lines[j].strip()
+                                        if next_line and not re.match(r'^\d+[\.)]\s+', next_line):
+                                            full_content += ' ' + next_line
+                                            j += 1
+                                        else:
+                                            break
+                                    
+                                    # Create styled block for this numbered item
+                                    formatted_parts.append(
+                                        f"""<div style='padding: 12px 16px; margin: 8px 0; border-left: 3px solid #4CAF50; background-color: #1E1E1E; border-radius: 4px;'>
+                                        <span style='font-weight: 700; color: #4CAF50; font-size: 18px; margin-right: 12px;'>{num}.</span>
+                                        <span style='font-size: 14px;'>{full_content}</span>
+                                        </div>"""
+                                    )
+                                    i = j
+                                    continue
+                            elif in_numbered_list and not stripped:
+                                # Empty line after list - end of list
+                                in_numbered_list = False
+                            elif not in_numbered_list:
+                                # Regular text, accumulate it
+                                current_text.append(line)
+                            
+                            i += 1
+                        
+                        # Add any remaining text
+                        if current_text:
+                            formatted_parts.append('\n'.join(current_text))
+                        
+                        return '\n'.join(formatted_parts)
+                    
+                    # Check if response has numbered list
+                    if re.search(r'^\d+[\.)]\s+', cleaned_output, re.MULTILINE):
+                        formatted_output = format_response(cleaned_output)
+                        st.markdown(formatted_output, unsafe_allow_html=True)
+                    else:
+                        st.markdown(cleaned_output)
+                    
                     try:
                         if "generate_dynamic_chart" in globals() and "df" in globals():
                             chart = generate_dynamic_chart(user_input, df)
